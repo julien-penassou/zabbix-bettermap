@@ -60,6 +60,7 @@ foreach ($data['maps'] as $map) {
 }
 
 $page
+	->addItem(Modules\BetterMaps\Lib\Assets::tags())
 	->addItem($table)
 	->addItem(
 		(new CScriptTag('BetterMaps.initList('.json_encode([

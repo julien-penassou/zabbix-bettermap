@@ -1,6 +1,6 @@
 <?php declare(strict_types = 0);
 
-namespace Modules\BetterMapsWidget\Includes;
+namespace Modules\BetterMaps\Includes;
 
 use Zabbix\Widgets\Fields\CWidgetFieldSelect;
 

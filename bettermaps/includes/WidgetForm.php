@@ -1,6 +1,6 @@
 <?php declare(strict_types = 0);
 
-namespace Modules\BetterMapsWidget\Includes;
+namespace Modules\BetterMaps\Includes;
 
 use Modules\BetterMaps\Lib\MapStorage;
 use Zabbix\Widgets\{
@@ -14,16 +14,13 @@ class WidgetForm extends CWidgetForm {
 	public function addFields(): self {
 		$maps = [];
 
-		// Le module principal fournit le stockage ; s'il est désactivé, la liste reste vide.
-		if (class_exists(MapStorage::class)) {
-			try {
-				foreach (MapStorage::getList() as $map) {
-					$maps[$map['mapid']] = $map['name'];
-				}
+		try {
+			foreach (MapStorage::getList() as $map) {
+				$maps[$map['mapid']] = $map['name'];
 			}
-			catch (\RuntimeException $e) {
-				$maps = [];
-			}
+		}
+		catch (\RuntimeException $e) {
+			$maps = [];
 		}
 
 		return $this

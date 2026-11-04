@@ -32,7 +32,6 @@ services:
       - "8099:8080"
     volumes:
       - ../bettermaps:/usr/share/zabbix/modules/bettermaps:ro
-      - ../bettermapswidget:/usr/share/zabbix/modules/bettermapswidget:ro
     depends_on: [postgres, zabbix-server]
 
 volumes:

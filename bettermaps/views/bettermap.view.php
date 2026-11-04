@@ -24,6 +24,7 @@ $config = [
 			new CLink('← Toutes les cartes', (new CUrl('zabbix.php'))->setArgument('action', 'bettermap.list'))
 		)
 	)
+	->addItem(Modules\BetterMaps\Lib\Assets::tags())
 	->addItem((new CDiv())->setId('bm-map'))
 	->addItem(
 		(new CScriptTag(

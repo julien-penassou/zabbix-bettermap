@@ -1,6 +1,6 @@
 /*
  * Widget « Carte+ » : affiche une carte Better Maps dans un tableau de bord.
- * L'éditeur (window.BetterMaps) est fourni par le module principal « Better Maps ».
+ * L'éditeur (window.BetterMaps) vient de bettermap.js, chargé juste avant ce fichier.
  */
 class CWidgetBetterMap extends CWidget {
 
@@ -16,13 +16,9 @@ class CWidgetBetterMap extends CWidget {
 	setContents(response) {
 		const map = response.bettermap;
 
-		if (!map || !window.BetterMaps) {
+		if (!map) {
 			this._destroyEditor();
 			super.setContents(response);
-
-			if (map && !window.BetterMaps) {
-				this._body.textContent = 'Le module « Better Maps » doit être activé.';
-			}
 
 			return;
 		}

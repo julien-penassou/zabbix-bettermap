@@ -1,11 +1,21 @@
 {
 	"manifest_version": 2.0,
 	"id": "bettermaps",
+	"type": "widget",
 	"name": "Better Maps",
-	"version": "1.0",
+	"version": "1.1",
 	"namespace": "BetterMaps",
 	"author": "Julien Penassou",
-	"description": "Cartes réseau façon draw.io : liens courbes déplaçables, statut des hôtes en temps réel.",
+	"description": "Cartes réseau façon draw.io (Surveillance › Cartes+) et widget « Carte+ » pour les tableaux de bord.",
+	"widget": {
+		"name": "Carte+",
+		"js_class": "CWidgetBetterMap",
+		"refresh_rate": 30,
+		"size": {
+			"width": 36,
+			"height": 8
+		}
+	},
 	"actions": {
 		"bettermap.list": {
 			"class": "MapList",
@@ -34,10 +44,13 @@
 		"bettermap.status": {
 			"class": "MapStatus",
 			"layout": "layout.json"
+		},
+		"widget.bettermaps.view": {
+			"class": "WidgetView"
 		}
 	},
 	"assets": {
 		"css": ["bettermap.css"],
-		"js": ["bettermap.js"]
+		"js": ["bettermap.js", "class.widget.js"]
 	}
 }

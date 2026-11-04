@@ -1,6 +1,6 @@
 <?php declare(strict_types = 0);
 
-namespace Modules\BetterMapsWidget\Actions;
+namespace Modules\BetterMaps\Actions;
 
 use CControllerDashboardWidgetView;
 use CControllerResponseData;
@@ -8,6 +8,9 @@ use Modules\BetterMaps\Lib\Access;
 use Modules\BetterMaps\Lib\HostStatus;
 use Modules\BetterMaps\Lib\MapStorage;
 
+/**
+ * Contenu du widget Carte+ : la carte et le statut de ses hôtes en une seule réponse.
+ */
 class WidgetView extends CControllerDashboardWidgetView {
 
 	protected function doAction(): void {
@@ -15,10 +18,7 @@ class WidgetView extends CControllerDashboardWidgetView {
 		$bettermap = null;
 		$name = $this->getInput('name', '');
 
-		if (!class_exists(MapStorage::class)) {
-			$error = 'Le module « Better Maps » doit être activé (Administration › Général › Modules).';
-		}
-		elseif (!Access::canView()) {
+		if (!Access::canView()) {
 			$error = 'Vous n\'avez pas accès aux cartes.';
 		}
 		else {
