@@ -1,0 +1,2666 @@
+/*
+ * Better Maps — éditeur de cartes réseau pour Zabbix.
+ * Ce fichier est chargé sur toutes les pages du frontend : il ne fait rien tant que
+ * BetterMaps.initMap() / BetterMaps.initList() n'est pas appelé.
+ */
+(function () {
+	'use strict';
+
+	if (window.BetterMaps) {
+		return;
+	}
+
+	const SVGNS = 'http://www.w3.org/2000/svg';
+
+	const SEVERITIES = [
+		{name: 'Non classé', color: '#97AAB3'},
+		{name: 'Information', color: '#7499FF'},
+		{name: 'Avertissement', color: '#FFC859'},
+		{name: 'Moyen', color: '#FFA059'},
+		{name: 'Haut', color: '#E97659'},
+		{name: 'Désastre', color: '#E45959'}
+	];
+	const OK_COLOR = '#3dbf75';
+	const MAINT_COLOR = '#9b6dd6';
+
+	// Icônes dessinées dans un carré 48x48, trait = currentColor.
+	const ICONS = {
+		server: {name: 'Serveur', svg: '<rect x="11" y="5" width="26" height="38" rx="3"/><path d="M16 14h16M16 21h16M16 28h16"/><circle cx="18" cy="36" r="1.6"/><circle cx="24" cy="36" r="1.6"/>'},
+		switch: {name: 'Switch', svg: '<rect x="4" y="17" width="40" height="14" rx="3"/><path d="M10 24h3M17 24h3M24 24h3M31 24h3"/><path d="M12 11h22l-4-4M36 37H14l4 4"/>'},
+		router: {name: 'Routeur', svg: '<circle cx="24" cy="24" r="18"/><path d="M24 8v11M24 40V29M8 24h11M40 24H29"/><path d="M20.5 12 24 8l3.5 4M20.5 36l3.5 4 3.5-4M12 20.5 8 24l4 3.5M36 20.5l4 3.5-4 3.5"/>'},
+		firewall: {name: 'Pare-feu', svg: '<rect x="5" y="9" width="38" height="30" rx="2"/><path d="M5 19h38M5 29h38M17 9v10M31 9v10M11 19v10M24 19v10M37 19v10M17 29v10M31 29v10"/>'},
+		cloud: {name: 'Cloud / Internet', svg: '<path d="M14 37h21a8.5 8.5 0 0 0 .5-17A11.5 11.5 0 0 0 13.4 18 9.5 9.5 0 0 0 14 37z"/>'},
+		database: {name: 'Base de données', svg: '<ellipse cx="24" cy="11" rx="14" ry="5"/><path d="M10 11v26c0 2.8 6.3 5 14 5s14-2.2 14-5V11"/><path d="M10 20c0 2.8 6.3 5 14 5s14-2.2 14-5M10 29c0 2.8 6.3 5 14 5s14-2.2 14-5"/>'},
+		vm: {name: 'VM / Conteneur', svg: '<path d="M24 5l17 8.5v21L24 43 7 34.5v-21z"/><path d="M7 13.5 24 22l17-8.5M24 22v21"/>'},
+		storage: {name: 'Stockage / NAS', svg: '<rect x="7" y="8" width="34" height="10" rx="2"/><rect x="7" y="19" width="34" height="10" rx="2"/><rect x="7" y="30" width="34" height="10" rx="2"/><path d="M12 13h8M12 24h8M12 35h8"/><circle cx="35" cy="13" r="1.5"/><circle cx="35" cy="24" r="1.5"/><circle cx="35" cy="35" r="1.5"/>'},
+		pc: {name: 'Poste de travail', svg: '<rect x="5" y="8" width="38" height="25" rx="2"/><path d="M17 41h14M24 33v8"/>'},
+		ap: {name: 'Borne Wi-Fi', svg: '<path d="M9 19a21 21 0 0 1 30 0M14.5 25a13 13 0 0 1 19 0M20 31a5.5 5.5 0 0 1 8 0"/><circle cx="24" cy="37" r="2.2"/>'},
+		printer: {name: 'Imprimante', svg: '<path d="M14 18V7h20v11"/><rect x="7" y="18" width="34" height="14" rx="2"/><rect x="14" y="27" width="20" height="14"/>'},
+		phone: {name: 'Téléphone IP', svg: '<rect x="8" y="10" width="32" height="30" rx="3"/><path d="M14 10V6h8v4"/><rect x="14" y="16" width="20" height="7"/><path d="M15 29h2M23 29h2M31 29h2M15 34h2M23 34h2M31 34h2"/>'},
+		camera: {name: 'Caméra', svg: '<rect x="5" y="15" width="28" height="18" rx="3"/><path d="M33 21l10-5v16l-10-5"/><circle cx="14" cy="24" r="4"/>'},
+		ups: {name: 'Onduleur / Énergie', svg: '<rect x="11" y="5" width="26" height="38" rx="3"/><path d="M26 12l-6 12h8l-6 12"/>'},
+		generic: {name: 'Générique', svg: '<rect x="8" y="8" width="32" height="32" rx="6"/><circle cx="24" cy="24" r="6"/>'}
+	};
+
+	const MAP_DEFAULTS = {
+		grid: true,
+		snap: true,
+		gridSize: 10,
+		background: '',
+		refresh: 30,
+		linkStyle: 'curve'
+	};
+
+	const NODE_DEFAULTS = {
+		host: {w: 56, h: 56, label: '', hostid: '', hostname: '', icon: 'server', shape: 'round', fill: '', stroke: '',
+			color: '', iconColor: '', fontSize: 12, url: ''},
+		shape: {w: 200, h: 120, label: 'Zone', shape: 'round', fill: '', stroke: '', color: '', fontSize: 13, url: '',
+			valign: 'topleft'},
+		text: {w: 120, h: 30, label: 'Texte', fill: '', stroke: '', color: '', fontSize: 14, url: ''}
+	};
+
+	const LINK_DEFAULTS = {
+		points: [], style: 'curve', color: '', width: 2, dash: 'solid', arrow: 'none', label: '', fontSize: 11,
+		status: 'both'
+	};
+
+	const CLIPBOARD_KEY = 'bettermaps.clipboard';
+
+	/* ------------------------------------------------------------------ utilitaires */
+
+	function svgEl(tag, attrs, parent) {
+		const e = document.createElementNS(SVGNS, tag);
+
+		for (const k in attrs) {
+			if (attrs[k] !== undefined && attrs[k] !== null && attrs[k] !== '') {
+				e.setAttribute(k, attrs[k]);
+			}
+		}
+
+		if (parent) {
+			parent.appendChild(e);
+		}
+
+		return e;
+	}
+
+	function htmlEl(tag, attrs, children) {
+		const e = document.createElement(tag);
+
+		for (const k in attrs || {}) {
+			const v = attrs[k];
+
+			if (v === undefined || v === null || v === false) {
+				continue;
+			}
+
+			if (k === 'text') {
+				e.textContent = v;
+			}
+			else if (k === 'class') {
+				e.className = v;
+			}
+			else if (k.startsWith('on')) {
+				e.addEventListener(k.slice(2), v);
+			}
+			else if (k in e && typeof v !== 'string') {
+				e[k] = v;
+			}
+			else {
+				e.setAttribute(k, v === true ? '' : v);
+			}
+		}
+
+		for (const c of [].concat(children || [])) {
+			if (c !== null && c !== undefined && c !== false) {
+				e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+			}
+		}
+
+		return e;
+	}
+
+	function uid() {
+		return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-3);
+	}
+
+	function isObj(v) {
+		return v !== null && typeof v === 'object' && !Array.isArray(v);
+	}
+
+	function num(v, d) {
+		const n = parseFloat(v);
+
+		return Number.isFinite(n) ? n : d;
+	}
+
+	function clamp(v, min, max) {
+		return Math.max(min, Math.min(max, v));
+	}
+
+	function unit(dx, dy) {
+		const len = Math.hypot(dx, dy) || 1;
+
+		return {x: dx / len, y: dy / len};
+	}
+
+	function bezierAt(s, t) {
+		const u = 1 - t;
+
+		return {
+			x: u * u * u * s.p1.x + 3 * u * u * t * s.c1.x + 3 * u * t * t * s.c2.x + t * t * t * s.p2.x,
+			y: u * u * u * s.p1.y + 3 * u * u * t * s.c1.y + 3 * u * t * t * s.c2.y + t * t * t * s.p2.y
+		};
+	}
+
+	function distToSegment(p, a, b) {
+		const dx = b.x - a.x, dy = b.y - a.y;
+		const len2 = dx * dx + dy * dy;
+		const t = len2 ? clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / len2, 0, 1) : 0;
+
+		return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+	}
+
+	function formatAge(clock) {
+		let s = Math.max(0, Math.floor(Date.now() / 1000) - clock);
+		const d = Math.floor(s / 86400); s %= 86400;
+		const h = Math.floor(s / 3600); s %= 3600;
+		const m = Math.floor(s / 60);
+
+		if (d) {
+			return d + 'j ' + h + 'h';
+		}
+
+		return h ? h + 'h ' + m + 'm' : m + 'm';
+	}
+
+	function post(action, params) {
+		const body = new URLSearchParams();
+
+		for (const k in params) {
+			const v = params[k];
+
+			if (Array.isArray(v)) {
+				v.forEach(x => body.append(k + '[]', x));
+			}
+			else {
+				body.append(k, v);
+			}
+		}
+
+		return fetch('zabbix.php?action=' + encodeURIComponent(action), {
+			method: 'POST',
+			credentials: 'same-origin',
+			body
+		})
+			.then(r => r.text())
+			.then(text => {
+				try {
+					return JSON.parse(text);
+				}
+				catch (e) {
+					throw new Error('Réponse inattendue du serveur (session expirée ou droits insuffisants ?)');
+				}
+			});
+	}
+
+	function normalizeDoc(data) {
+		data = isObj(data) ? data : {};
+
+		const doc = {
+			nodes: [],
+			links: [],
+			settings: Object.assign({}, MAP_DEFAULTS, isObj(data.settings) ? data.settings : {})
+		};
+		const ids = new Set();
+
+		for (const n of Array.isArray(data.nodes) ? data.nodes : []) {
+			if (!isObj(n)) {
+				continue;
+			}
+
+			const type = NODE_DEFAULTS[n.type] ? n.type : 'shape';
+			const defs = NODE_DEFAULTS[type];
+			const node = Object.assign({id: '', x: 0, y: 0}, defs, n, {type});
+
+			node.id = String(node.id || uid());
+
+			if (ids.has(node.id)) {
+				node.id = uid();
+			}
+
+			ids.add(node.id);
+			node.x = num(node.x, 0);
+			node.y = num(node.y, 0);
+			node.w = Math.max(8, num(node.w, defs.w));
+			node.h = Math.max(8, num(node.h, defs.h));
+			node.fontSize = clamp(num(node.fontSize, defs.fontSize), 6, 96);
+			node.label = String(node.label ?? '');
+			doc.nodes.push(node);
+		}
+
+		const linkids = new Set();
+
+		for (const l of Array.isArray(data.links) ? data.links : []) {
+			if (!isObj(l) || !ids.has(String(l.from)) || !ids.has(String(l.to)) || l.from === l.to) {
+				continue;
+			}
+
+			const link = Object.assign({id: ''}, LINK_DEFAULTS, l);
+
+			link.id = String(link.id || uid());
+
+			if (linkids.has(link.id)) {
+				link.id = uid();
+			}
+
+			linkids.add(link.id);
+			link.from = String(link.from);
+			link.to = String(link.to);
+			link.points = (Array.isArray(link.points) ? link.points : [])
+				.filter(isObj)
+				.map(p => ({x: num(p.x, 0), y: num(p.y, 0)}));
+			link.width = clamp(num(link.width, 2), 0.5, 20);
+			link.fontSize = clamp(num(link.fontSize, 11), 6, 72);
+			link.label = String(link.label ?? '');
+			doc.links.push(link);
+		}
+
+		return doc;
+	}
+
+	function center(n) {
+		return {x: n.x + n.w / 2, y: n.y + n.h / 2};
+	}
+
+	function isEllipse(n) {
+		return n.type !== 'text' && n.shape === 'ellipse';
+	}
+
+	// Point du bord du nœud situé sur la droite centre -> cible.
+	// extra_bottom : hauteur du libellé sous l'icône d'un hôte (le lien s'arrête sous le nom).
+	function borderPoint(n, toward, extra_bottom = 0) {
+		const c = center(n);
+		const dx = toward.x - c.x, dy = toward.y - c.y;
+		const gap = 2;
+
+		if (!dx && !dy) {
+			return c;
+		}
+
+		let s;
+
+		if (isEllipse(n)) {
+			const hw = n.w / 2 + gap, hh = n.h / 2 + gap;
+
+			s = 1 / Math.sqrt((dx * dx) / (hw * hw) + (dy * dy) / (hh * hh));
+		}
+		else {
+			const left = n.w / 2 + gap, right = left, top = n.h / 2 + gap, bottom = top + extra_bottom;
+
+			s = Math.min(
+				dx > 0 ? right / dx : dx < 0 ? -left / dx : Infinity,
+				dy > 0 ? bottom / dy : dy < 0 ? -top / dy : Infinity
+			);
+		}
+
+		return {x: c.x + dx * s, y: c.y + dy * s};
+	}
+
+	function shapeEl(shape, w, h, attrs, parent) {
+		if (shape === 'ellipse') {
+			return svgEl('ellipse', Object.assign({cx: w / 2, cy: h / 2, rx: w / 2, ry: h / 2}, attrs), parent);
+		}
+
+		const rx = shape === 'round' ? Math.min(12, h / 4, w / 4) : 0;
+
+		return svgEl('rect', Object.assign({x: 0, y: 0, width: w, height: h, rx}, attrs), parent);
+	}
+
+	function drawText(parent, text, x, y, opts) {
+		const lines = String(text).split('\n');
+		const fs = opts.size || 12;
+		const lh = fs * 1.2;
+		const baseline = opts.valign === 'middle' ? 'central' : 'hanging';
+		const t = svgEl('text', {x, y, 'font-size': fs, 'text-anchor': opts.anchor || 'middle', class: opts.cls || 'bm-label'},
+			parent);
+		const y0 = opts.valign === 'middle' ? y - (lines.length - 1) * lh / 2 : y;
+
+		if (opts.color) {
+			t.style.fill = opts.color;
+		}
+
+		lines.forEach((line, i) => {
+			const ts = svgEl('tspan', {x, y: y0 + i * lh, 'dominant-baseline': baseline}, t);
+
+			ts.textContent = line || ' ';
+		});
+
+		return t;
+	}
+
+	function iconSvg(icon, size) {
+		const s = svgEl('svg', {viewBox: '0 0 48 48', width: size, height: size, class: 'bm-icon'});
+
+		s.innerHTML = (ICONS[icon] || ICONS.generic).svg;
+
+		return s;
+	}
+
+	/* ------------------------------------------------------------------ éditeur */
+
+	class MapEditor {
+
+		constructor(root, cfg) {
+			this.root = root;
+			this.cfg = cfg;
+			this.name = cfg.name;
+			this.doc = normalizeDoc(cfg.data);
+			this.edit = !!cfg.edit;
+			this.sel = {nodes: new Set(), links: new Set()};
+			this.view = {x: 0, y: 0, k: 1};
+			this.status = {};
+			this.statusLoaded = false;
+			this.undoStack = [];
+			this.redoStack = [];
+			this.dirty = false;
+			this.version = 0;
+			this.drag = null;
+			this.spaceDown = false;
+			this.pasteCount = 0;
+			this.uid = 'bm' + uid();
+			// Mode intégré (widget de tableau de bord) : lecture seule, pas de raccourcis globaux,
+			// le rafraîchissement est piloté par le widget.
+			this.embedded = !!cfg.embedded;
+			this.listeners = [];
+
+			if (this.embedded) {
+				this.cfg.canEdit = false;
+				this.edit = false;
+			}
+
+			this.buildDom();
+			this.resize();
+			this.render();
+			this.renderPanel();
+			this.fit();
+
+			if (cfg.status) {
+				this.setStatus(cfg.status);
+			}
+			else {
+				this.refreshStatus();
+			}
+
+			if (this.embedded) {
+				return;
+			}
+
+			this.startTimer();
+			this.listen(window, 'resize', () => this.resize());
+			this.listen(document, 'fullscreenchange', () => setTimeout(() => this.resize(), 50));
+			this.listen(document, 'keydown', e => this.onKeyDown(e));
+			this.listen(document, 'keyup', e => {
+				if (e.key === ' ') {
+					this.spaceDown = false;
+					this.canvas.classList.remove('bm-panning');
+				}
+			});
+			this.listen(window, 'beforeunload', e => {
+				if (this.dirty) {
+					e.preventDefault();
+					e.returnValue = '';
+				}
+			});
+		}
+
+		listen(target, type, fn) {
+			target.addEventListener(type, fn);
+			this.listeners.push([target, type, fn]);
+		}
+
+		destroy() {
+			clearInterval(this.timer);
+			clearTimeout(this.toastTimer);
+
+			for (const [target, type, fn] of this.listeners) {
+				target.removeEventListener(type, fn);
+			}
+
+			this.listeners = [];
+			this.destroyed = true;
+			this.root.textContent = '';
+		}
+
+		/* ---------------- construction du DOM */
+
+		buildDom() {
+			this.root.classList.add('bm-root');
+			this.root.classList.toggle('bm-embedded', this.embedded);
+			this.root.textContent = '';
+
+			this.toolbar = htmlEl('div', {class: this.embedded ? 'bm-mini' : 'bm-toolbar'});
+			this.canvas = htmlEl('div', {class: 'bm-canvas', tabindex: '-1'});
+			this.panel = htmlEl('div', {class: 'bm-panel', hidden: true});
+			this.popup = htmlEl('div', {class: 'bm-popup', hidden: true});
+			this.toast = htmlEl('div', {class: 'bm-toast'});
+
+			if (this.embedded) {
+				this.root.append(htmlEl('div', {class: 'bm-body'}, [this.canvas]));
+				this.canvas.append(this.toolbar);
+			}
+			else {
+				this.root.append(this.toolbar, htmlEl('div', {class: 'bm-body'}, [this.canvas, this.panel]));
+			}
+
+			this.canvas.append(this.popup, this.toast);
+
+			this.svg = svgEl('svg', {class: 'bm-svg'});
+			this.canvas.prepend(this.svg);
+
+			const defs = svgEl('defs', {}, this.svg);
+
+			this.gridPattern = svgEl('pattern', {id: this.uid + '-grid', patternUnits: 'userSpaceOnUse'}, defs);
+			this.gridDot = svgEl('circle', {class: 'bm-grid-dot'}, this.gridPattern);
+			this.bg = svgEl('rect', {class: 'bm-bg', width: '100%', height: '100%'}, this.svg);
+			this.gridRect = svgEl('rect', {width: '100%', height: '100%', fill: 'url(#' + this.uid + '-grid)',
+				'pointer-events': 'none'}, this.svg);
+			this.world = svgEl('g', {class: 'bm-world'}, this.svg);
+			this.gZones = svgEl('g', {}, this.world);
+			this.gLinks = svgEl('g', {}, this.world);
+			this.gNodes = svgEl('g', {}, this.world);
+			this.gOverlay = svgEl('g', {class: 'bm-overlay'}, this.world);
+
+			this.svg.addEventListener('pointerdown', e => this.onPointerDown(e));
+			this.svg.addEventListener('pointermove', e => this.onPointerMove(e));
+			this.svg.addEventListener('pointerup', e => this.onPointerUp(e));
+			this.svg.addEventListener('pointercancel', () => {
+				this.drag = null;
+				this.render();
+			});
+			this.svg.addEventListener('dblclick', e => this.onDblClick(e));
+			this.svg.addEventListener('contextmenu', e => e.preventDefault());
+			this.svg.addEventListener('wheel', e => this.onWheel(e), {passive: false});
+		}
+
+		resize() {
+			if (this.embedded) {
+				return;
+			}
+
+			const top = this.root.getBoundingClientRect().top + window.scrollY;
+			const fs = document.fullscreenElement === this.root;
+			const h = fs ? window.innerHeight : Math.max(420, window.innerHeight - top - 16);
+
+			this.root.style.height = h + 'px';
+		}
+
+		buildToolbar() {
+			const tb = this.toolbar;
+			const btn = (label, title, fn, opts = {}) => htmlEl('button', {
+				type: 'button', class: 'btn-alt bm-btn ' + (opts.cls || ''), title, text: label,
+				disabled: opts.disabled, onclick: fn
+			});
+			const sep = () => htmlEl('span', {class: 'bm-sep'});
+
+			if (this.embedded) {
+				// Petits contrôles flottants, construits une seule fois.
+				if (!tb.childElementCount && this.cfg.controls) {
+					tb.append(
+						btn('−', 'Dézoomer', () => this.zoomBy(1 / 1.25)),
+						btn('+', 'Zoomer (ou Ctrl + molette)', () => this.zoomBy(1.25)),
+						btn('⤢', 'Afficher toute la carte', () => this.fit()),
+						htmlEl('a', {class: 'btn-alt bm-btn', title: 'Ouvrir la carte en grand', text: '↗',
+							href: 'zabbix.php?action=bettermap.view&mapid=' + encodeURIComponent(this.cfg.mapid)})
+					);
+				}
+
+				return;
+			}
+
+			tb.textContent = '';
+
+			if (this.cfg.canEdit) {
+				tb.append(htmlEl('div', {class: 'bm-seg'}, [
+					btn('Voir', 'Mode visualisation', () => this.setEdit(false), {cls: this.edit ? '' : 'bm-active'}),
+					btn('Éditer', 'Mode édition', () => this.setEdit(true), {cls: this.edit ? 'bm-active' : ''})
+				]), sep());
+			}
+
+			if (this.edit) {
+				tb.append(
+					btn('+ Hôte', 'Ajouter un hôte Zabbix', () => this.addNode('host')),
+					btn('+ Zone', 'Ajouter un rectangle / une zone', () => this.addNode('shape', {shape: 'round'})),
+					btn('+ Ellipse', 'Ajouter une ellipse', () => this.addNode('shape', {shape: 'ellipse', w: 140, h: 90,
+						label: ''})),
+					btn('+ Texte', 'Ajouter un texte libre', () => this.addNode('text')),
+					sep(),
+					btn('↶', 'Annuler (Ctrl+Z)', () => this.undo(), {disabled: !this.undoStack.length}),
+					btn('↷', 'Rétablir (Ctrl+Y)', () => this.redo(), {disabled: !this.redoStack.length}),
+					sep()
+				);
+			}
+
+			tb.append(
+				btn('−', 'Dézoomer', () => this.zoomBy(1 / 1.25)),
+				htmlEl('span', {class: 'bm-zoom', text: Math.round(this.view.k * 100) + ' %', title: 'Revenir à 100 %',
+					onclick: () => this.zoomTo(1)}),
+				btn('+', 'Zoomer', () => this.zoomBy(1.25)),
+				btn('Ajuster', 'Afficher toute la carte', () => this.fit()),
+				btn('⛶', 'Plein écran', () => this.toggleFullscreen())
+			);
+
+			tb.append(htmlEl('span', {class: 'bm-spacer'}));
+
+			if (this.lastUpdate) {
+				tb.append(htmlEl('span', {class: 'bm-updated', text: 'Statut : ' + this.lastUpdate.toLocaleTimeString()}));
+			}
+
+			if (this.cfg.canEdit && (this.edit || this.dirty)) {
+				tb.append(btn(this.saving ? 'Enregistrement…' : (this.dirty ? 'Enregistrer *' : 'Enregistré'),
+					'Enregistrer (Ctrl+S)', () => this.save(),
+					{cls: 'bm-save' + (this.dirty ? ' bm-dirty' : ''), disabled: this.saving}
+				));
+			}
+		}
+
+		toggleFullscreen() {
+			if (document.fullscreenElement) {
+				document.exitFullscreen();
+			}
+			else if (this.root.requestFullscreen) {
+				this.root.requestFullscreen();
+			}
+		}
+
+		setEdit(edit) {
+			if (edit === this.edit) {
+				return;
+			}
+
+			this.edit = edit;
+			this.clearSelection();
+			this.hidePopup();
+
+			const url = new URL(window.location.href);
+
+			if (edit) {
+				url.searchParams.set('edit', '1');
+			}
+			else {
+				url.searchParams.delete('edit');
+			}
+
+			history.replaceState(null, '', url);
+			this.render();
+			this.renderPanel();
+		}
+
+		/* ---------------- accès aux données */
+
+		node(id) {
+			return this.doc.nodes.find(n => n.id === id);
+		}
+
+		link(id) {
+			return this.doc.links.find(l => l.id === id);
+		}
+
+		selectedNodes() {
+			return this.doc.nodes.filter(n => this.sel.nodes.has(n.id));
+		}
+
+		selectedLinks() {
+			return this.doc.links.filter(l => this.sel.links.has(l.id));
+		}
+
+		clearSelection() {
+			this.sel.nodes.clear();
+			this.sel.links.clear();
+		}
+
+		pruneSelection() {
+			for (const id of [...this.sel.nodes]) {
+				if (!this.node(id)) {
+					this.sel.nodes.delete(id);
+				}
+			}
+
+			for (const id of [...this.sel.links]) {
+				if (!this.link(id)) {
+					this.sel.links.delete(id);
+				}
+			}
+		}
+
+		snap(v) {
+			const s = this.doc.settings;
+
+			return s.snap ? Math.round(v / s.gridSize) * s.gridSize : Math.round(v);
+		}
+
+		snapPt(p) {
+			return {x: this.snap(p.x), y: this.snap(p.y)};
+		}
+
+		nodeLabel(n) {
+			if (n.label !== '' || n.type !== 'host') {
+				return n.label;
+			}
+
+			const st = this.status[n.hostid];
+
+			return st ? st.name : (n.hostname || (this.edit ? '(choisir un hôte)' : ''));
+		}
+
+		/* ---------------- historique */
+
+		checkpoint() {
+			this.undoStack.push(JSON.stringify(this.doc));
+
+			if (this.undoStack.length > 200) {
+				this.undoStack.shift();
+			}
+
+			this.redoStack = [];
+			this.markDirty();
+		}
+
+		markDirty() {
+			this.dirty = true;
+			this.version++;
+		}
+
+		undo() {
+			if (!this.undoStack.length) {
+				return;
+			}
+
+			this.redoStack.push(JSON.stringify(this.doc));
+			this.doc = JSON.parse(this.undoStack.pop());
+			this.afterHistory();
+		}
+
+		redo() {
+			if (!this.redoStack.length) {
+				return;
+			}
+
+			this.undoStack.push(JSON.stringify(this.doc));
+			this.doc = JSON.parse(this.redoStack.pop());
+			this.afterHistory();
+		}
+
+		afterHistory() {
+			this.markDirty();
+			this.pruneSelection();
+			this.render();
+			this.renderPanel();
+			this.restartTimerIfNeeded();
+		}
+
+		/* ---------------- statut Zabbix */
+
+		hostids() {
+			return [...new Set(this.doc.nodes.filter(n => n.type === 'host' && n.hostid).map(n => n.hostid))];
+		}
+
+		refreshStatus() {
+			if (document.hidden && this.statusLoaded) {
+				return;
+			}
+
+			const hostids = this.hostids();
+
+			if (!hostids.length) {
+				this.status = {};
+				this.statusLoaded = true;
+				this.render();
+
+				return;
+			}
+
+			post('bettermap.status', {hostids})
+				.then(res => {
+					if (res.error) {
+						throw new Error(res.error);
+					}
+
+					this.setStatus(res.hosts);
+				})
+				.catch(err => this.notify(err.message, true));
+		}
+
+		setStatus(hosts) {
+			if (this.destroyed) {
+				return;
+			}
+
+			this.status = isObj(hosts) ? hosts : {};
+			this.statusLoaded = true;
+			this.lastUpdate = new Date();
+			this.render();
+
+			if (!this.popup.hidden && this.popupNode) {
+				this.showPopup(this.popupNode);
+			}
+		}
+
+		startTimer() {
+			clearInterval(this.timer);
+			this.timerDelay = Math.max(10, num(this.doc.settings.refresh, 30));
+			this.timer = setInterval(() => this.refreshStatus(), this.timerDelay * 1000);
+		}
+
+		restartTimerIfNeeded() {
+			if (Math.max(10, num(this.doc.settings.refresh, 30)) !== this.timerDelay) {
+				this.startTimer();
+			}
+		}
+
+		nodeStatus(n) {
+			if (n.type !== 'host' || !n.hostid || !this.statusLoaded) {
+				return {state: 'none'};
+			}
+
+			const st = this.status[n.hostid];
+
+			if (!st) {
+				return {state: 'unknown'};
+			}
+
+			if (st.disabled) {
+				return {state: 'disabled'};
+			}
+
+			if (st.problems.length) {
+				return {
+					state: 'problem',
+					severity: Math.max(...st.problems.map(p => p.severity)),
+					count: st.problems.length,
+					maintenance: st.maintenance
+				};
+			}
+
+			return {state: st.maintenance ? 'maint' : 'ok'};
+		}
+
+		linkSeverity(l) {
+			let sev = -1;
+			const ends = {from: [l.from], to: [l.to], both: [l.from, l.to]}[l.status] || [];
+
+			for (const id of ends) {
+				const st = this.nodeStatus(this.node(id) || {});
+
+				if (st.state === 'problem') {
+					sev = Math.max(sev, st.severity);
+				}
+			}
+
+			return sev;
+		}
+
+		/* ---------------- rendu */
+
+		applyView() {
+			const v = this.view;
+			const s = this.doc.settings;
+			const gs = s.gridSize * v.k;
+
+			this.world.setAttribute('transform', `translate(${v.x},${v.y}) scale(${v.k})`);
+			this.gridPattern.setAttribute('width', gs);
+			this.gridPattern.setAttribute('height', gs);
+			this.gridPattern.setAttribute('patternTransform', `translate(${v.x},${v.y})`);
+			this.gridDot.setAttribute('cx', gs / 2);
+			this.gridDot.setAttribute('cy', gs / 2);
+			this.gridDot.setAttribute('r', clamp(v.k, 0.6, 1.4));
+			this.gridRect.style.display = s.grid && this.edit && gs >= 4 ? '' : 'none';
+			this.bg.style.fill = s.background || '';
+
+			const zoom = this.toolbar.querySelector('.bm-zoom');
+
+			if (zoom) {
+				zoom.textContent = Math.round(v.k * 100) + ' %';
+			}
+		}
+
+		render() {
+			this.root.classList.toggle('bm-editing', this.edit);
+			this.applyView();
+			this.renderLinks();
+			this.renderNodes();
+			this.renderOverlay();
+			this.buildToolbar();
+		}
+
+		renderNodes() {
+			this.gZones.textContent = '';
+			this.gNodes.textContent = '';
+
+			for (const n of this.doc.nodes) {
+				const g = svgEl('g', {
+					class: 'bm-node bm-node-' + n.type + (this.sel.nodes.has(n.id) ? ' bm-selected' : '')
+						+ (n.url && !this.edit ? ' bm-clickable' : ''),
+					'data-role': 'node',
+					'data-id': n.id,
+					transform: `translate(${n.x},${n.y})`
+				}, n.type === 'shape' ? this.gZones : this.gNodes);
+
+				if (n.type === 'host') {
+					this.renderHost(g, n);
+				}
+				else if (n.type === 'shape') {
+					const body = shapeEl(n.shape, n.w, n.h, {class: 'bm-body'}, g);
+
+					if (n.fill) {
+						body.style.fill = n.fill;
+					}
+
+					if (n.stroke) {
+						body.style.stroke = n.stroke;
+					}
+
+					if (n.label) {
+						const lines = n.label.split('\n').length;
+						const pos = {
+							topleft: [12, 10, 'start', 'top'],
+							top: [n.w / 2, 10, 'middle', 'top'],
+							bottom: [n.w / 2, n.h - 10 - lines * n.fontSize * 1.2, 'middle', 'top']
+						}[n.valign] || [n.w / 2, n.h / 2, 'middle', 'middle'];
+
+						drawText(g, n.label, pos[0], pos[1], {size: n.fontSize, color: n.color, anchor: pos[2],
+							valign: pos[3], cls: 'bm-label bm-shape-label'});
+					}
+				}
+				else {
+					const hit = svgEl('rect', {class: 'bm-text-hit', width: n.w, height: n.h}, g);
+
+					if (n.fill) {
+						hit.style.fill = n.fill;
+					}
+
+					if (n.stroke) {
+						hit.style.stroke = n.stroke;
+					}
+
+					drawText(g, n.label, n.w / 2, n.h / 2, {size: n.fontSize, color: n.color, valign: 'middle'});
+				}
+
+				if (this.edit) {
+					for (const [cx, cy] of [[n.w / 2, 0], [n.w, n.h / 2], [n.w / 2, n.h], [0, n.h / 2]]) {
+						svgEl('circle', {class: 'bm-conn', cx, cy, r: 5 / this.view.k, 'data-role': 'conn',
+							'data-id': n.id}, g);
+					}
+				}
+			}
+		}
+
+		renderHost(g, n) {
+			const st = this.nodeStatus(n);
+			const sevColor = st.state === 'problem' ? SEVERITIES[st.severity].color : null;
+
+			g.classList.add('bm-st-' + st.state);
+
+			if (sevColor && st.severity >= 4) {
+				const halo = shapeEl(n.shape, n.w, n.h, {class: 'bm-halo'}, g);
+
+				halo.style.stroke = sevColor;
+			}
+
+			const body = shapeEl(n.shape, n.w, n.h, {class: 'bm-body'}, g);
+
+			if (n.fill) {
+				body.style.fill = n.fill;
+			}
+
+			if (sevColor) {
+				body.style.stroke = sevColor;
+				body.style.strokeWidth = '2.5';
+			}
+			else if (n.stroke) {
+				body.style.stroke = n.stroke;
+			}
+
+			const s = Math.min(n.w, n.h) * 0.68;
+			const icon = svgEl('g', {class: 'bm-icon',
+				transform: `translate(${(n.w - s) / 2},${(n.h - s) / 2}) scale(${s / 48})`}, g);
+
+			icon.innerHTML = (ICONS[n.icon] || ICONS.generic).svg;
+
+			if (n.iconColor) {
+				icon.style.stroke = n.iconColor;
+			}
+
+			const label = this.nodeLabel(n);
+
+			if (label) {
+				drawText(g, label, n.w / 2, n.h + 5, {size: n.fontSize, color: n.color, cls: 'bm-label bm-host-label'});
+			}
+
+			// Pastille de statut
+			const bx = n.w - 2, by = 2;
+
+			if (st.state === 'problem') {
+				svgEl('circle', {class: 'bm-badge', cx: bx, cy: by, r: 9, fill: sevColor}, g);
+				const t = svgEl('text', {class: 'bm-badge-text', x: bx, y: by, 'text-anchor': 'middle',
+					'dominant-baseline': 'central'}, g);
+
+				t.textContent = st.count > 99 ? '99+' : st.count;
+			}
+			else if (st.state === 'ok') {
+				svgEl('circle', {class: 'bm-badge', cx: bx, cy: by, r: 5, fill: OK_COLOR}, g);
+			}
+
+			if (st.state === 'maint' || st.maintenance) {
+				const mx = st.state === 'problem' ? 2 : bx;
+
+				svgEl('circle', {class: 'bm-badge', cx: mx, cy: by, r: 8, fill: MAINT_COLOR}, g);
+				const t = svgEl('text', {class: 'bm-badge-text', x: mx, y: by, 'text-anchor': 'middle',
+					'dominant-baseline': 'central'}, g);
+
+				t.textContent = 'M';
+			}
+
+			const title = svgEl('title', {}, g);
+			const info = this.status[n.hostid];
+
+			title.textContent = info
+				? info.name + (info.problems.length ? '\n' + info.problems.map(p => '• ' + p.name).join('\n') : '\nAucun problème')
+				: (n.hostname || '');
+		}
+
+		linkGeometry(l, par) {
+			const a = this.node(l.from), b = this.node(l.to);
+
+			if (!a || !b) {
+				return null;
+			}
+
+			const ca = center(a), cb = center(b);
+			let mids = l.points.map(p => ({x: p.x, y: p.y}));
+
+			// Liens parallèles sans point de passage : on les écarte automatiquement.
+			if (!mids.length && par.count > 1) {
+				const off = (par.index - (par.count - 1) / 2) * 34;
+
+				if (off) {
+					const sign = par.flip ? -1 : 1;
+					const u = unit((cb.x - ca.x) * sign, (cb.y - ca.y) * sign);
+
+					mids = [{x: (ca.x + cb.x) / 2 - u.y * off, y: (ca.y + cb.y) / 2 + u.x * off}];
+				}
+			}
+
+			let ctrl, line;
+			const elbows = [];
+
+			if (l.style === 'orthogonal') {
+				const raw = [ca, ...mids, cb];
+
+				line = [raw[0]];
+
+				for (let i = 1; i < raw.length; i++) {
+					const p = line[line.length - 1], q = raw[i];
+
+					if (Math.abs(p.x - q.x) > 0.5 && Math.abs(p.y - q.y) > 0.5) {
+						const e = Math.abs(q.x - p.x) >= Math.abs(q.y - p.y) || i > 1 ? {x: q.x, y: p.y} : {x: p.x, y: q.y};
+
+						line.push(e);
+						elbows[i - 1] = e;
+					}
+
+					line.push(q);
+				}
+
+				line[0] = borderPoint(a, line[1], this.labelExtent(a));
+				line[line.length - 1] = borderPoint(b, line[line.length - 2], this.labelExtent(b));
+				ctrl = [line[0], ...mids, line[line.length - 1]];
+			}
+			else {
+				ctrl = [
+					borderPoint(a, mids[0] || cb, this.labelExtent(a)),
+					...mids,
+					borderPoint(b, mids[mids.length - 1] || ca, this.labelExtent(b))
+				];
+				line = ctrl;
+			}
+
+			const n = line.length;
+			const startDir = unit(line[1].x - line[0].x, line[1].y - line[0].y);
+			const endDir = unit(line[n - 1].x - line[n - 2].x, line[n - 1].y - line[n - 2].y);
+			const startTip = line[0], endTip = line[n - 1];
+			const arrowSize = 5 + l.width * 2.2;
+			const drawn = line.slice();
+
+			if (l.arrow === 'end' || l.arrow === 'both') {
+				drawn[n - 1] = {x: endTip.x - endDir.x * arrowSize * 0.8, y: endTip.y - endDir.y * arrowSize * 0.8};
+			}
+
+			if (l.arrow === 'start' || l.arrow === 'both') {
+				drawn[0] = {x: startTip.x + startDir.x * arrowSize * 0.8, y: startTip.y + startDir.y * arrowSize * 0.8};
+			}
+
+			// Segments entre points de contrôle (servent au tracé, au clic et aux poignées).
+			const segs = [];
+			let d;
+
+			if (l.style === 'curve' && drawn.length > 2) {
+				const p = drawn;
+
+				d = `M${p[0].x},${p[0].y}`;
+
+				for (let i = 0; i < p.length - 1; i++) {
+					const p0 = p[i - 1] || p[i], p1 = p[i], p2 = p[i + 1], p3 = p[i + 2] || p2;
+					const s = {
+						p1, p2,
+						c1: {x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6},
+						c2: {x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6}
+					};
+
+					d += ` C${s.c1.x},${s.c1.y} ${s.c2.x},${s.c2.y} ${p2.x},${p2.y}`;
+					s.samples = Array.from({length: 13}, (_, k) => bezierAt(s, k / 12));
+					s.mid = bezierAt(s, 0.5);
+					segs.push(s);
+				}
+			}
+			else {
+				d = 'M' + drawn.map(p => p.x + ',' + p.y).join(' L');
+
+				for (let i = 0; i < ctrl.length - 1; i++) {
+					const p1 = ctrl[i], p2 = ctrl[i + 1], e = elbows[i];
+
+					segs.push({
+						p1, p2,
+						samples: e ? [p1, e, p2] : [p1, p2],
+						mid: e || {x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2}
+					});
+				}
+			}
+
+			return {d, ctrl, segs, startTip, endTip, startDir, endDir, arrowSize};
+		}
+
+		labelExtent(n) {
+			const label = n.type === 'host' ? this.nodeLabel(n) : '';
+
+			return label ? label.split('\n').length * n.fontSize * 1.2 + 6 : 0;
+		}
+
+		segmentIndex(geom, p) {
+			let best = 0, bestD = Infinity;
+
+			geom.segs.forEach((s, i) => {
+				for (let k = 0; k < s.samples.length - 1; k++) {
+					const dist = distToSegment(p, s.samples[k], s.samples[k + 1]);
+
+					if (dist < bestD) {
+						bestD = dist;
+						best = i;
+					}
+				}
+			});
+
+			return best;
+		}
+
+		renderLinks() {
+			this.gLinks.textContent = '';
+			this.geom = {};
+
+			const pairs = {};
+
+			for (const l of this.doc.links) {
+				const key = [l.from, l.to].sort().join('|');
+
+				(pairs[key] = pairs[key] || []).push(l.id);
+			}
+
+			for (const l of this.doc.links) {
+				const list = pairs[[l.from, l.to].sort().join('|')];
+				const geom = this.linkGeometry(l, {index: list.indexOf(l.id), count: list.length, flip: l.from > l.to});
+
+				if (!geom) {
+					continue;
+				}
+
+				this.geom[l.id] = geom;
+
+				const sev = this.linkSeverity(l);
+				const color = sev >= 0 ? SEVERITIES[sev].color : l.color;
+				const g = svgEl('g', {
+					class: 'bm-link' + (this.sel.links.has(l.id) ? ' bm-selected' : '') + (sev >= 0 ? ' bm-link-problem' : ''),
+					'data-role': 'link',
+					'data-id': l.id
+				}, this.gLinks);
+				const w = l.width;
+				const dash = {dashed: `${w * 4} ${w * 3}`, dotted: `0.1 ${w * 2.5}`}[l.dash];
+
+				svgEl('path', {class: 'bm-link-hit', d: geom.d, 'stroke-width': Math.max(14, w + 10) / Math.sqrt(this.view.k)}, g);
+
+				const path = svgEl('path', {class: 'bm-link-line', d: geom.d, 'stroke-width': w, 'stroke-dasharray': dash,
+					'stroke-linecap': l.dash === 'dotted' ? 'round' : null}, g);
+
+				if (color) {
+					path.style.stroke = color;
+				}
+
+				if (l.arrow === 'end' || l.arrow === 'both') {
+					this.arrowHead(g, geom.endTip, geom.endDir, geom.arrowSize, color);
+				}
+
+				if (l.arrow === 'start' || l.arrow === 'both') {
+					this.arrowHead(g, geom.startTip, {x: -geom.startDir.x, y: -geom.startDir.y}, geom.arrowSize, color);
+				}
+
+				if (l.label) {
+					const len = path.getTotalLength();
+					const mid = len ? path.getPointAtLength(len / 2) : geom.startTip;
+					const bg = svgEl('rect', {class: 'bm-link-label-bg', rx: 3}, g);
+					const t = drawText(g, l.label, mid.x, mid.y, {size: l.fontSize, valign: 'middle', cls: 'bm-label bm-link-label'});
+					const bb = t.getBBox();
+
+					bg.setAttribute('x', bb.x - 4);
+					bg.setAttribute('y', bb.y - 2);
+					bg.setAttribute('width', bb.width + 8);
+					bg.setAttribute('height', bb.height + 4);
+				}
+
+				const title = svgEl('title', {}, g);
+				const a = this.node(l.from), b = this.node(l.to);
+
+				title.textContent = this.nodeLabel(a) + ' ↔ ' + this.nodeLabel(b) + (l.label ? '\n' + l.label : '');
+			}
+		}
+
+		arrowHead(parent, tip, dir, size, color) {
+			const px = -dir.y, py = dir.x;
+			const bx = tip.x - dir.x * size, by = tip.y - dir.y * size;
+			const poly = svgEl('polygon', {
+				class: 'bm-arrow',
+				points: `${tip.x},${tip.y} ${bx + px * size * 0.5},${by + py * size * 0.5} ${bx - px * size * 0.5},${by - py * size * 0.5}`
+			}, parent);
+
+			if (color) {
+				poly.style.fill = color;
+			}
+		}
+
+		renderOverlay() {
+			const o = this.gOverlay;
+			const k = this.view.k;
+
+			o.textContent = '';
+
+			if (!this.edit) {
+				return;
+			}
+
+			const nodes = this.selectedNodes();
+			const links = this.selectedLinks();
+
+			for (const n of nodes) {
+				const pad = 4 / k;
+
+				svgEl('rect', {class: 'bm-sel-box', x: n.x - pad, y: n.y - pad, width: n.w + pad * 2, height: n.h + pad * 2,
+					'stroke-width': 1.2 / k}, o);
+			}
+
+			if (nodes.length === 1 && !links.length) {
+				const n = nodes[0], s = 9 / k;
+
+				svgEl('rect', {class: 'bm-handle bm-resize', 'data-role': 'resize', x: n.x + n.w - s / 2, y: n.y + n.h - s / 2,
+					width: s, height: s, 'stroke-width': 1.5 / k}, o);
+			}
+
+			if (links.length === 1 && !nodes.length) {
+				const l = links[0], geom = this.geom[l.id];
+
+				if (geom) {
+					geom.segs.forEach((s, i) => {
+						svgEl('circle', {class: 'bm-handle bm-vwp', 'data-role': 'vwp', 'data-index': i, cx: s.mid.x, cy: s.mid.y,
+							r: 4.5 / k, 'stroke-width': 1.5 / k}, o);
+					});
+					l.points.forEach((p, i) => {
+						svgEl('circle', {class: 'bm-handle bm-wp', 'data-role': 'wp', 'data-index': i, cx: p.x, cy: p.y,
+							r: 5.5 / k, 'stroke-width': 1.5 / k}, o);
+					});
+
+					for (const [end, p] of [['from', geom.ctrl[0]], ['to', geom.ctrl[geom.ctrl.length - 1]]]) {
+						svgEl('circle', {class: 'bm-handle bm-end', 'data-role': 'end', 'data-end': end, cx: p.x, cy: p.y,
+							r: 5.5 / k, 'stroke-width': 1.5 / k}, o);
+					}
+				}
+			}
+
+			const d = this.drag;
+
+			if (d && d.moved && d.type === 'band') {
+				const r = this.bandRect();
+
+				svgEl('rect', {class: 'bm-band', x: r.x, y: r.y, width: r.w, height: r.h, 'stroke-width': 1 / k}, o);
+			}
+
+			if (d && d.moved && (d.type === 'connect' || d.type === 'end')) {
+				let from;
+
+				if (d.type === 'connect') {
+					from = center(this.node(d.from));
+				}
+				else {
+					const l = this.link(d.link);
+					const other = this.node(d.end === 'from' ? l.to : l.from);
+
+					from = center(other);
+				}
+
+				const target = d.hover ? this.node(d.hover) : null;
+
+				if (target) {
+					const pad = 4 / k;
+
+					svgEl('rect', {class: 'bm-drop', x: target.x - pad, y: target.y - pad, width: target.w + pad * 2,
+						height: target.h + pad * 2, 'stroke-width': 2 / k}, o);
+				}
+
+				const to = target ? center(target) : d.cur;
+
+				svgEl('path', {class: 'bm-temp-link', d: `M${from.x},${from.y} L${to.x},${to.y}`, 'stroke-width': 2 / k}, o);
+			}
+		}
+
+		/* ---------------- vue (zoom / déplacement) */
+
+		toWorld(e) {
+			const r = this.svg.getBoundingClientRect();
+
+			return {x: (e.clientX - r.left - this.view.x) / this.view.k, y: (e.clientY - r.top - this.view.y) / this.view.k};
+		}
+
+		zoomAt(f, sx, sy) {
+			const v = this.view;
+			const k = clamp(v.k * f, 0.1, 5);
+
+			f = k / v.k;
+			v.x = sx - (sx - v.x) * f;
+			v.y = sy - (sy - v.y) * f;
+			v.k = k;
+			this.render();
+		}
+
+		zoomBy(f) {
+			const r = this.svg.getBoundingClientRect();
+
+			this.zoomAt(f, r.width / 2, r.height / 2);
+		}
+
+		zoomTo(k) {
+			this.zoomBy(k / this.view.k);
+		}
+
+		onWheel(e) {
+			// Dans un tableau de bord, la molette seule doit continuer à faire défiler la page.
+			if (this.embedded && !e.ctrlKey) {
+				return;
+			}
+
+			e.preventDefault();
+
+			const r = this.svg.getBoundingClientRect();
+
+			if (e.ctrlKey || !e.shiftKey) {
+				this.zoomAt(Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0015)), e.clientX - r.left, e.clientY - r.top);
+			}
+			else {
+				this.view.x -= e.deltaY;
+				this.applyView();
+			}
+		}
+
+		bounds() {
+			let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+
+			for (const n of this.doc.nodes) {
+				x1 = Math.min(x1, n.x);
+				y1 = Math.min(y1, n.y);
+				x2 = Math.max(x2, n.x + n.w);
+				y2 = Math.max(y2, n.y + n.h + (n.type === 'host' ? n.fontSize * 1.5 + 6 : 0));
+			}
+
+			for (const l of this.doc.links) {
+				for (const p of l.points) {
+					x1 = Math.min(x1, p.x);
+					y1 = Math.min(y1, p.y);
+					x2 = Math.max(x2, p.x);
+					y2 = Math.max(y2, p.y);
+				}
+			}
+
+			return x1 === Infinity ? null : {x: x1, y: y1, w: x2 - x1, h: y2 - y1};
+		}
+
+		fit() {
+			const b = this.bounds();
+			const r = this.svg.getBoundingClientRect();
+
+			if (!b || !r.width) {
+				this.view = {x: 40, y: 40, k: 1};
+			}
+			else {
+				const pad = 40;
+				const k = clamp(Math.min((r.width - pad * 2) / Math.max(b.w, 1), (r.height - pad * 2) / Math.max(b.h, 1)), 0.1, 1.5);
+
+				this.view = {k, x: (r.width - b.w * k) / 2 - b.x * k, y: (r.height - b.h * k) / 2 - b.y * k};
+			}
+
+			this.render();
+		}
+
+		/* ---------------- souris */
+
+		nodeAt(p) {
+			const order = [...this.doc.nodes.filter(n => n.type !== 'shape'), ...this.doc.nodes.filter(n => n.type === 'shape')];
+
+			for (let i = order.length - 1; i >= 0; i--) {
+				const n = order[i];
+
+				if (p.x >= n.x - 4 && p.x <= n.x + n.w + 4 && p.y >= n.y - 4 && p.y <= n.y + n.h + 4) {
+					return n;
+				}
+			}
+
+			return null;
+		}
+
+		bandRect() {
+			const d = this.drag;
+
+			return {
+				x: Math.min(d.start.x, d.cur.x), y: Math.min(d.start.y, d.cur.y),
+				w: Math.abs(d.cur.x - d.start.x), h: Math.abs(d.cur.y - d.start.y)
+			};
+		}
+
+		onPointerDown(e) {
+			if (e.button === 2 && this.edit) {
+				// clic droit : déplacement de la vue
+			}
+			else if (e.button !== 0 && e.button !== 1) {
+				return;
+			}
+
+			this.canvas.focus({preventScroll: true});
+
+			const w = this.toWorld(e);
+			const t = e.target.closest('[data-role]');
+			const role = t ? t.dataset.role : null;
+			const d = {sx: e.clientX, sy: e.clientY, start: w, cur: w, moved: false, vx: this.view.x, vy: this.view.y};
+
+			this.svg.setPointerCapture(e.pointerId);
+			this.drag = d;
+
+			if (e.button !== 0 || this.spaceDown) {
+				d.type = 'pan';
+
+				return;
+			}
+
+			if (!this.edit) {
+				d.type = 'click';
+				d.target = role === 'node' ? t.dataset.id : null;
+
+				return;
+			}
+
+			e.preventDefault();
+			this.hidePopup();
+
+			const selBefore = this.selKey();
+
+			if (!role || e.altKey) {
+				if (!e.shiftKey) {
+					this.clearSelection();
+				}
+
+				d.type = 'band';
+				d.base = {nodes: new Set(this.sel.nodes), links: new Set(this.sel.links)};
+			}
+			else if (role === 'conn') {
+				d.type = 'connect';
+				d.from = t.dataset.id;
+			}
+			else if (role === 'resize') {
+				const n = this.selectedNodes()[0];
+
+				d.type = 'resize';
+				d.node = n.id;
+				d.orig = {w: n.w, h: n.h};
+			}
+			else if (role === 'wp' || role === 'vwp' || role === 'end') {
+				d.type = role;
+				d.link = this.selectedLinks()[0].id;
+				d.index = +t.dataset.index;
+				d.end = t.dataset.end;
+			}
+			else if (role === 'link') {
+				const id = t.dataset.id;
+
+				if (e.shiftKey) {
+					this.sel.links.has(id) ? this.sel.links.delete(id) : this.sel.links.add(id);
+				}
+				else if (!this.sel.links.has(id) || this.sel.nodes.size || this.sel.links.size > 1) {
+					this.clearSelection();
+					this.sel.links.add(id);
+				}
+
+				d.type = 'bend';
+				d.link = id;
+			}
+			else if (role === 'node') {
+				const id = t.dataset.id;
+
+				if (e.shiftKey) {
+					this.sel.nodes.has(id) ? this.sel.nodes.delete(id) : this.sel.nodes.add(id);
+				}
+				else if (!this.sel.nodes.has(id)) {
+					this.clearSelection();
+					this.sel.nodes.add(id);
+				}
+
+				d.type = 'move';
+				d.primary = id;
+				d.orig = new Map(this.selectedNodes().map(n => [n.id, {x: n.x, y: n.y}]));
+				// Les points des liens dont les deux extrémités bougent suivent le mouvement.
+				d.origPts = new Map(this.doc.links
+					.filter(l => this.sel.nodes.has(l.from) && this.sel.nodes.has(l.to))
+					.map(l => [l.id, l.points.map(p => ({x: p.x, y: p.y}))]));
+			}
+
+			this.render();
+
+			if (this.selKey() !== selBefore) {
+				this.renderPanel();
+			}
+		}
+
+		selKey() {
+			return [...this.sel.nodes].join(',') + '|' + [...this.sel.links].join(',');
+		}
+
+		onPointerMove(e) {
+			const d = this.drag;
+
+			if (!d) {
+				return;
+			}
+
+			const w = this.toWorld(e);
+
+			if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 4) {
+				return;
+			}
+
+			const first = !d.moved;
+
+			d.moved = true;
+			d.cur = w;
+
+			if (d.type === 'click') {
+				d.type = 'pan';
+			}
+
+			switch (d.type) {
+				case 'pan':
+					this.view.x = d.vx + e.clientX - d.sx;
+					this.view.y = d.vy + e.clientY - d.sy;
+					this.applyView();
+					this.hidePopup();
+
+					return;
+
+				case 'band':
+					this.applyBand(e.shiftKey);
+					this.render();
+
+					return;
+
+				case 'connect':
+				case 'end': {
+					const n = this.nodeAt(w);
+					const exclude = d.type === 'connect' ? d.from
+						: (d.end === 'from' ? this.link(d.link).to : this.link(d.link).from);
+
+					d.hover = n && n.id !== exclude ? n.id : null;
+					this.renderOverlay();
+
+					return;
+				}
+
+				case 'move': {
+					if (first) {
+						this.checkpoint();
+					}
+
+					const o = d.orig.get(d.primary);
+					const dx = this.snap(o.x + w.x - d.start.x) - o.x;
+					const dy = this.snap(o.y + w.y - d.start.y) - o.y;
+
+					for (const [id, p] of d.orig) {
+						const n = this.node(id);
+
+						n.x = p.x + dx;
+						n.y = p.y + dy;
+					}
+
+					for (const [id, pts] of d.origPts) {
+						this.link(id).points = pts.map(p => ({x: p.x + dx, y: p.y + dy}));
+					}
+
+					break;
+				}
+
+				case 'resize': {
+					if (first) {
+						this.checkpoint();
+					}
+
+					const n = this.node(d.node);
+
+					n.w = Math.max(12, this.snap(d.orig.w + w.x - d.start.x));
+					n.h = Math.max(12, this.snap(d.orig.h + w.y - d.start.y));
+					break;
+				}
+
+				case 'bend':
+				case 'vwp': {
+					const l = this.link(d.link);
+					const geom = this.geom[l.id];
+
+					if (!geom) {
+						return;
+					}
+
+					this.checkpoint();
+
+					const index = d.type === 'vwp' ? d.index : this.segmentIndex(geom, d.start);
+
+					l.points.splice(Math.min(index, l.points.length), 0, this.snapPt(w));
+					d.type = 'wp';
+					d.index = Math.min(index, l.points.length - 1);
+
+					if (!this.sel.links.has(l.id) || this.sel.links.size > 1 || this.sel.nodes.size) {
+						this.clearSelection();
+						this.sel.links.add(l.id);
+						this.renderPanel();
+					}
+
+					break;
+				}
+
+				case 'wp': {
+					if (first) {
+						this.checkpoint();
+					}
+
+					this.link(d.link).points[d.index] = this.snapPt(w);
+					break;
+				}
+			}
+
+			this.render();
+		}
+
+		applyBand(additive) {
+			const r = this.bandRect();
+			const inside = n => n.x >= r.x && n.y >= r.y && n.x + n.w <= r.x + r.w && n.y + n.h <= r.y + r.h;
+
+			this.sel.nodes = new Set(additive ? this.drag.base.nodes : []);
+			this.sel.links = new Set(additive ? this.drag.base.links : []);
+
+			for (const n of this.doc.nodes) {
+				if (inside(n)) {
+					this.sel.nodes.add(n.id);
+				}
+			}
+
+			for (const l of this.doc.links) {
+				if (this.sel.nodes.has(l.from) && this.sel.nodes.has(l.to)) {
+					this.sel.links.add(l.id);
+				}
+			}
+		}
+
+		onPointerUp(e) {
+			const d = this.drag;
+
+			this.drag = null;
+
+			if (!d) {
+				return;
+			}
+
+			if (this.svg.hasPointerCapture(e.pointerId)) {
+				this.svg.releasePointerCapture(e.pointerId);
+			}
+
+			switch (d.type) {
+				case 'click': {
+					const n = d.target ? this.node(d.target) : null;
+
+					if (n && n.url && n.type !== 'host') {
+						window.open(n.url, '_self');
+					}
+					else if (n && n.type === 'host') {
+						this.showPopup(n, e);
+					}
+					else {
+						this.hidePopup();
+					}
+
+					return;
+				}
+
+				case 'connect':
+					if (d.moved && d.hover) {
+						this.checkpoint();
+
+						const l = Object.assign({id: uid()}, LINK_DEFAULTS, {
+							from: d.from, to: d.hover, points: [], style: this.doc.settings.linkStyle
+						});
+
+						this.doc.links.push(l);
+						this.clearSelection();
+						this.sel.links.add(l.id);
+					}
+					break;
+
+				case 'end':
+					if (d.moved && d.hover) {
+						this.checkpoint();
+						this.link(d.link)[d.end] = d.hover;
+					}
+					break;
+			}
+
+			this.render();
+
+			if (d.type !== 'pan') {
+				this.renderPanel();
+			}
+		}
+
+		onDblClick(e) {
+			if (!this.edit) {
+				return;
+			}
+
+			const t = e.target.closest('[data-role]');
+
+			if (!t) {
+				return;
+			}
+
+			if (t.dataset.role === 'wp') {
+				const l = this.selectedLinks()[0];
+
+				if (l) {
+					this.checkpoint();
+					l.points.splice(+t.dataset.index, 1);
+					this.render();
+				}
+			}
+			else if (t.dataset.role === 'node') {
+				const field = this.panel.querySelector('[data-focus]');
+
+				if (field) {
+					field.focus();
+					field.select && field.select();
+				}
+			}
+		}
+
+		/* ---------------- clavier */
+
+		onKeyDown(e) {
+			if (!this.root.isConnected) {
+				return;
+			}
+
+			const tag = (e.target.tagName || '').toLowerCase();
+
+			if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) {
+				return;
+			}
+
+			const ctrl = e.ctrlKey || e.metaKey;
+			const key = e.key.toLowerCase();
+
+			if (e.key === 'Escape') {
+				if (this.drag) {
+					this.drag = null;
+				}
+				else {
+					this.clearSelection();
+					this.renderPanel();
+				}
+
+				this.hidePopup();
+				this.render();
+
+				return;
+			}
+
+			if (ctrl && key === 's' && this.cfg.canEdit) {
+				e.preventDefault();
+				this.save();
+
+				return;
+			}
+
+			if (!this.edit) {
+				return;
+			}
+
+			if (e.key === ' ') {
+				this.spaceDown = true;
+				this.canvas.classList.add('bm-panning');
+				e.preventDefault();
+
+				return;
+			}
+
+			let handled = true;
+
+			if (ctrl && key === 'z' && !e.shiftKey) {
+				this.undo();
+			}
+			else if (ctrl && (key === 'y' || (key === 'z' && e.shiftKey))) {
+				this.redo();
+			}
+			else if (ctrl && key === 'a') {
+				this.sel.nodes = new Set(this.doc.nodes.map(n => n.id));
+				this.sel.links = new Set(this.doc.links.map(l => l.id));
+				this.render();
+				this.renderPanel();
+			}
+			else if (ctrl && key === 'c') {
+				this.copy();
+			}
+			else if (ctrl && key === 'v') {
+				this.paste();
+			}
+			else if (ctrl && key === 'd') {
+				this.duplicate();
+			}
+			else if (e.key === 'Delete' || e.key === 'Backspace') {
+				this.deleteSelection();
+			}
+			else if (e.key.startsWith('Arrow') && this.sel.nodes.size) {
+				const step = e.shiftKey ? 10 : 1;
+				const dx = {ArrowLeft: -step, ArrowRight: step}[e.key] || 0;
+				const dy = {ArrowUp: -step, ArrowDown: step}[e.key] || 0;
+
+				this.checkpoint();
+				this.moveSelection(dx, dy);
+			}
+			else {
+				handled = false;
+			}
+
+			if (handled) {
+				e.preventDefault();
+			}
+		}
+
+		/* ---------------- opérations d'édition */
+
+		visibleCenter() {
+			const r = this.svg.getBoundingClientRect();
+
+			return {x: (r.width / 2 - this.view.x) / this.view.k, y: (r.height / 2 - this.view.y) / this.view.k};
+		}
+
+		addNode(type, extra = {}) {
+			this.checkpoint();
+
+			const c = this.visibleCenter();
+			const n = Object.assign({id: uid(), type}, NODE_DEFAULTS[type], extra);
+
+			n.x = this.snap(c.x - n.w / 2) + (this.pasteCount++ % 5) * 10;
+			n.y = this.snap(c.y - n.h / 2) + ((this.pasteCount - 1) % 5) * 10;
+
+			if (type === 'shape') {
+				this.doc.nodes.unshift(n);
+			}
+			else {
+				this.doc.nodes.push(n);
+			}
+
+			this.clearSelection();
+			this.sel.nodes.add(n.id);
+			this.render();
+			this.renderPanel();
+
+			if (type === 'host') {
+				const input = this.panel.querySelector('.bm-hostpicker input');
+
+				input && input.focus();
+			}
+		}
+
+		moveSelection(dx, dy) {
+			for (const n of this.selectedNodes()) {
+				n.x += dx;
+				n.y += dy;
+			}
+
+			for (const l of this.doc.links) {
+				if (this.sel.nodes.has(l.from) && this.sel.nodes.has(l.to)) {
+					l.points.forEach(p => {
+						p.x += dx;
+						p.y += dy;
+					});
+				}
+			}
+
+			this.render();
+		}
+
+		deleteSelection() {
+			if (!this.sel.nodes.size && !this.sel.links.size) {
+				return;
+			}
+
+			this.checkpoint();
+			this.doc.nodes = this.doc.nodes.filter(n => !this.sel.nodes.has(n.id));
+			this.doc.links = this.doc.links.filter(l => !this.sel.links.has(l.id)
+				&& !this.sel.nodes.has(l.from) && !this.sel.nodes.has(l.to));
+			this.clearSelection();
+			this.render();
+			this.renderPanel();
+		}
+
+		copy() {
+			const nodes = this.selectedNodes();
+
+			if (!nodes.length) {
+				return;
+			}
+
+			const ids = new Set(nodes.map(n => n.id));
+			const data = JSON.stringify({
+				nodes,
+				links: this.doc.links.filter(l => ids.has(l.from) && ids.has(l.to))
+			});
+
+			this.clipboard = data;
+
+			try {
+				localStorage.setItem(CLIPBOARD_KEY, data);
+			}
+			catch (err) {
+				// stockage local indisponible : presse-papiers en mémoire uniquement
+			}
+
+			this.pasteCount = 0;
+		}
+
+		paste() {
+			let data;
+
+			try {
+				data = JSON.parse(localStorage.getItem(CLIPBOARD_KEY) || this.clipboard || 'null');
+			}
+			catch (err) {
+				data = JSON.parse(this.clipboard || 'null');
+			}
+
+			if (!data || !Array.isArray(data.nodes) || !data.nodes.length) {
+				return;
+			}
+
+			const clean = normalizeDoc(data);
+			const off = 20 * (++this.pasteCount);
+			const idmap = {};
+
+			this.checkpoint();
+			this.clearSelection();
+
+			for (const n of clean.nodes) {
+				idmap[n.id] = uid();
+				n.id = idmap[n.id];
+				n.x += off;
+				n.y += off;
+				this.doc.nodes.push(n);
+				this.sel.nodes.add(n.id);
+			}
+
+			for (const l of clean.links) {
+				l.id = uid();
+				l.from = idmap[l.from];
+				l.to = idmap[l.to];
+				l.points = l.points.map(p => ({x: p.x + off, y: p.y + off}));
+				this.doc.links.push(l);
+				this.sel.links.add(l.id);
+			}
+
+			this.render();
+			this.renderPanel();
+		}
+
+		duplicate() {
+			this.copy();
+			this.pasteCount = 0;
+			this.paste();
+		}
+
+		align(mode) {
+			const nodes = this.selectedNodes();
+
+			if (nodes.length < 2) {
+				return;
+			}
+
+			this.checkpoint();
+
+			const minX = Math.min(...nodes.map(n => n.x)), maxX = Math.max(...nodes.map(n => n.x + n.w));
+			const minY = Math.min(...nodes.map(n => n.y)), maxY = Math.max(...nodes.map(n => n.y + n.h));
+
+			if (mode === 'hdist' || mode === 'vdist') {
+				const h = mode === 'hdist';
+				const sorted = nodes.slice().sort((a, b) => h ? center(a).x - center(b).x : center(a).y - center(b).y);
+				const c0 = center(sorted[0]), c1 = center(sorted[sorted.length - 1]);
+
+				sorted.forEach((n, i) => {
+					const t = i / (sorted.length - 1);
+
+					if (h) {
+						n.x = Math.round(c0.x + (c1.x - c0.x) * t - n.w / 2);
+					}
+					else {
+						n.y = Math.round(c0.y + (c1.y - c0.y) * t - n.h / 2);
+					}
+				});
+			}
+			else {
+				for (const n of nodes) {
+					switch (mode) {
+						case 'left': n.x = minX; break;
+						case 'right': n.x = maxX - n.w; break;
+						case 'hcenter': n.x = Math.round((minX + maxX) / 2 - n.w / 2); break;
+						case 'top': n.y = minY; break;
+						case 'bottom': n.y = maxY - n.h; break;
+						case 'vcenter': n.y = Math.round((minY + maxY) / 2 - n.h / 2); break;
+					}
+				}
+			}
+
+			this.render();
+		}
+
+		reorder(front) {
+			const ids = this.sel.nodes;
+			const sel = this.doc.nodes.filter(n => ids.has(n.id));
+			const rest = this.doc.nodes.filter(n => !ids.has(n.id));
+
+			this.checkpoint();
+			this.doc.nodes = front ? [...rest, ...sel] : [...sel, ...rest];
+			this.render();
+		}
+
+		save() {
+			if (this.saving || !this.cfg.canEdit) {
+				return;
+			}
+
+			const version = this.version;
+			const params = {mapid: this.cfg.mapid, name: this.name, data: JSON.stringify(this.doc)};
+
+			params[this.cfg.csrfName] = this.cfg.csrf;
+			this.saving = true;
+			this.buildToolbar();
+
+			post('bettermap.save', params)
+				.then(res => {
+					if (res.error) {
+						throw new Error(res.error);
+					}
+
+					if (this.version === version) {
+						this.dirty = false;
+					}
+
+					this.notify('Carte enregistrée');
+				})
+				.catch(err => this.notify(err.message, true))
+				.finally(() => {
+					this.saving = false;
+					this.buildToolbar();
+				});
+		}
+
+		notify(text, error) {
+			this.toast.textContent = text;
+			this.toast.className = 'bm-toast bm-show' + (error ? ' bm-error' : '');
+			clearTimeout(this.toastTimer);
+			this.toastTimer = setTimeout(() => this.toast.classList.remove('bm-show'), error ? 6000 : 2200);
+		}
+
+		/* ---------------- popup (mode visualisation) */
+
+		showPopup(n, e) {
+			this.popupNode = n;
+
+			const st = this.status[n.hostid];
+			const p = this.popup;
+
+			p.textContent = '';
+
+			if (!n.hostid) {
+				return;
+			}
+
+			p.append(htmlEl('div', {class: 'bm-popup-title', text: st ? st.name : (n.hostname || 'Hôte')}));
+
+			if (!st) {
+				p.append(htmlEl('div', {class: 'bm-popup-empty', text: 'Hôte introuvable ou non autorisé.'}));
+			}
+			else {
+				if (st.maintenance) {
+					p.append(htmlEl('div', {class: 'bm-popup-maint', text: 'En maintenance'}));
+				}
+
+				if (st.disabled) {
+					p.append(htmlEl('div', {class: 'bm-popup-empty', text: 'Hôte désactivé'}));
+				}
+
+				if (!st.problems.length) {
+					p.append(htmlEl('div', {class: 'bm-popup-ok', text: 'Aucun problème'}));
+				}
+				else {
+					const list = htmlEl('ul', {class: 'bm-popup-problems'});
+
+					st.problems.slice().sort((a, b) => b.severity - a.severity || b.clock - a.clock).slice(0, 15)
+						.forEach(pr => {
+							const li = htmlEl('li', {}, [
+								htmlEl('span', {class: 'bm-sev', style: 'background:' + SEVERITIES[pr.severity].color,
+									title: SEVERITIES[pr.severity].name}),
+								htmlEl('span', {class: 'bm-pname', text: pr.name}),
+								htmlEl('span', {class: 'bm-page', text: formatAge(pr.clock) + (pr.acknowledged ? ' ✓' : '')})
+							]);
+
+							list.append(li);
+						});
+					p.append(list);
+
+					if (st.problems.length > 15) {
+						p.append(htmlEl('div', {class: 'bm-popup-empty', text: '… et ' + (st.problems.length - 15) + ' autres'}));
+					}
+				}
+			}
+
+			const id = encodeURIComponent(n.hostid);
+
+			p.append(htmlEl('div', {class: 'bm-popup-links'}, [
+				htmlEl('a', {href: 'zabbix.php?action=problem.view&filter_set=1&hostids%5B%5D=' + id, text: 'Problèmes'}),
+				htmlEl('a', {href: 'zabbix.php?action=latest.view&filter_set=1&hostids%5B%5D=' + id, text: 'Dernières données'}),
+				htmlEl('a', {href: 'zabbix.php?action=charts.view&filter_set=1&filter_hostids%5B%5D=' + id, text: 'Graphiques'}),
+				htmlEl('a', {href: 'zabbix.php?action=host.dashboard.view&hostid=' + id, text: 'Tableaux de bord'}),
+				n.url ? htmlEl('a', {href: n.url, text: 'Lien'}) : null
+			]));
+
+			p.hidden = false;
+
+			if (e) {
+				const r = this.canvas.getBoundingClientRect();
+
+				this.popupPos = {x: e.clientX - r.left, y: e.clientY - r.top};
+			}
+
+			const r = this.canvas.getBoundingClientRect();
+			const x = clamp(this.popupPos.x + 12, 8, r.width - p.offsetWidth - 8);
+			const y = clamp(this.popupPos.y + 12, 8, r.height - p.offsetHeight - 8);
+
+			p.style.left = x + 'px';
+			p.style.top = y + 'px';
+		}
+
+		hidePopup() {
+			this.popup.hidden = true;
+			this.popupNode = null;
+		}
+
+		/* ---------------- panneau de propriétés */
+
+		renderPanel() {
+			const p = this.panel;
+
+			p.textContent = '';
+			p.hidden = !this.edit;
+
+			if (!this.edit) {
+				return;
+			}
+
+			const nodes = this.selectedNodes();
+			const links = this.selectedLinks();
+
+			if (nodes.length === 1 && !links.length) {
+				this.panelNode(nodes[0]);
+			}
+			else if (links.length === 1 && !nodes.length) {
+				this.panelLink(links[0]);
+			}
+			else if (nodes.length + links.length > 1) {
+				this.panelMulti(nodes, links);
+			}
+			else {
+				this.panelMap();
+			}
+		}
+
+		section(title) {
+			const s = htmlEl('div', {class: 'bm-section'}, [htmlEl('div', {class: 'bm-section-title', text: title})]);
+
+			this.panel.append(s);
+
+			return s;
+		}
+
+		row(parent, label, control) {
+			parent.append(htmlEl('label', {class: 'bm-row'}, [htmlEl('span', {class: 'bm-row-label', text: label}), control]));
+
+			return control;
+		}
+
+		// Lie un champ à une modification du modèle, avec un seul point d'annulation par saisie.
+		bind(el, event, apply, opts = {}) {
+			let cp = false;
+
+			el.addEventListener('focus', () => cp = false);
+			el.addEventListener(event, () => {
+				if (!cp) {
+					this.checkpoint();
+					cp = true;
+				}
+
+				apply(el);
+				this.render();
+
+				if (opts.panel) {
+					this.renderPanel();
+				}
+			});
+			el.addEventListener('change', () => cp = false);
+
+			return el;
+		}
+
+		textField(obj, key, opts = {}) {
+			const el = htmlEl(opts.multiline ? 'textarea' : 'input', {
+				type: opts.multiline ? null : 'text', value: obj[key], placeholder: opts.placeholder || '', rows: opts.multiline ? 2 : null,
+				'data-focus': opts.focus ? '1' : null
+			});
+
+			if (opts.multiline) {
+				el.value = obj[key];
+			}
+
+			return this.bind(el, 'input', () => obj[key] = el.value);
+		}
+
+		numberField(obj, key, min, max, step = 1) {
+			const el = htmlEl('input', {type: 'number', value: obj[key], min, max, step, class: 'bm-num'});
+
+			return this.bind(el, 'input', () => {
+				const v = parseFloat(el.value);
+
+				if (Number.isFinite(v)) {
+					obj[key] = clamp(v, min, max);
+				}
+			});
+		}
+
+		selectField(obj, key, options, opts = {}) {
+			const el = htmlEl('select', {}, Object.entries(options).map(([v, t]) =>
+				htmlEl('option', {value: v, text: t, selected: String(obj[key]) === v})
+			));
+
+			return this.bind(el, 'change', () => {
+				obj[key] = el.value;
+				opts.after && opts.after(el.value);
+			}, {panel: opts.panel});
+		}
+
+		checkField(obj, key, opts = {}) {
+			const el = htmlEl('input', {type: 'checkbox', checked: !!obj[key]});
+
+			return this.bind(el, 'change', () => {
+				obj[key] = el.checked;
+				opts.after && opts.after();
+			});
+		}
+
+		colorField(obj, key, fallback) {
+			const input = htmlEl('input', {type: 'color', value: obj[key] || fallback});
+			const reset = htmlEl('button', {type: 'button', class: 'bm-color-reset', title: 'Couleur par défaut', text: '×'});
+			const wrap = htmlEl('span', {class: 'bm-color' + (obj[key] ? '' : ' bm-color-default')}, [input, reset]);
+
+			this.bind(input, 'input', () => {
+				obj[key] = input.value;
+				wrap.classList.remove('bm-color-default');
+			});
+			reset.addEventListener('click', e => {
+				e.preventDefault();
+				this.checkpoint();
+				obj[key] = '';
+				wrap.classList.add('bm-color-default');
+				this.render();
+			});
+
+			return wrap;
+		}
+
+		buttons(parent, defs) {
+			const wrap = htmlEl('div', {class: 'bm-buttons'}, defs.filter(Boolean).map(([label, fn, cls, title]) =>
+				htmlEl('button', {type: 'button', class: 'btn-alt ' + (cls || ''), text: label, title: title || null, onclick: fn})
+			));
+
+			parent.append(wrap);
+
+			return wrap;
+		}
+
+		hostPicker(n) {
+			const input = htmlEl('input', {type: 'text', value: n.hostname, placeholder: 'Rechercher un hôte…'});
+			const list = htmlEl('div', {class: 'bm-hp-list', hidden: true});
+			const wrap = htmlEl('div', {class: 'bm-hostpicker'}, [input, list]);
+			let timer, seq = 0;
+
+			const search = () => {
+				const my = ++seq;
+
+				post('bettermap.hosts', {search: input.value})
+					.then(res => {
+						if (my !== seq) {
+							return;
+						}
+
+						list.textContent = '';
+
+						const hosts = res.hosts || [];
+
+						if (!hosts.length) {
+							list.append(htmlEl('div', {class: 'bm-hp-empty', text: 'Aucun hôte trouvé'}));
+						}
+
+						for (const h of hosts) {
+							list.append(htmlEl('div', {
+								class: 'bm-hp-item' + (h.hostid === n.hostid ? ' bm-current' : ''), text: h.name,
+								onmousedown: e => {
+									e.preventDefault();
+									this.checkpoint();
+									n.hostid = h.hostid;
+									n.hostname = h.name;
+									input.value = h.name;
+									list.hidden = true;
+									input.blur();
+									this.render();
+									this.refreshStatus();
+								}
+							}));
+						}
+
+						list.hidden = false;
+					})
+					.catch(err => this.notify(err.message, true));
+			};
+
+			input.addEventListener('focus', () => {
+				input.select();
+				search();
+			});
+			input.addEventListener('input', () => {
+				clearTimeout(timer);
+				timer = setTimeout(search, 250);
+			});
+			input.addEventListener('blur', () => setTimeout(() => {
+				list.hidden = true;
+				input.value = n.hostname;
+			}, 150));
+
+			return wrap;
+		}
+
+		iconPicker(n) {
+			const wrap = htmlEl('div', {class: 'bm-icons'});
+
+			for (const [key, icon] of Object.entries(ICONS)) {
+				const b = htmlEl('button', {type: 'button', class: 'bm-icon-btn' + (n.icon === key ? ' bm-active' : ''),
+					title: icon.name});
+
+				b.append(iconSvg(key, 26));
+				b.addEventListener('click', () => {
+					this.checkpoint();
+					n.icon = key;
+					wrap.querySelectorAll('.bm-active').forEach(x => x.classList.remove('bm-active'));
+					b.classList.add('bm-active');
+					this.render();
+				});
+				wrap.append(b);
+			}
+
+			return wrap;
+		}
+
+		panelNode(n) {
+			const typeNames = {host: 'Hôte Zabbix', shape: 'Forme / zone', text: 'Texte'};
+			const s1 = this.section(typeNames[n.type]);
+
+			this.row(s1, 'Type', this.selectField(n, 'type', typeNames, {
+				panel: true,
+				after: type => {
+					for (const [k, v] of Object.entries(NODE_DEFAULTS[type])) {
+						if (!(k in n)) {
+							n[k] = v;
+						}
+					}
+				}
+			}));
+
+			if (n.type === 'host') {
+				this.row(s1, 'Hôte', this.hostPicker(n));
+			}
+
+			this.row(s1, 'Libellé', this.textField(n, 'label', {
+				multiline: true, focus: true,
+				placeholder: n.type === 'host' ? 'Nom de l\'hôte par défaut' : ''
+			}));
+
+			if (n.type === 'host') {
+				const s = this.section('Icône');
+
+				s.append(this.iconPicker(n));
+			}
+
+			const s2 = this.section('Apparence');
+
+			if (n.type !== 'text') {
+				this.row(s2, 'Forme', this.selectField(n, 'shape', {round: 'Rectangle arrondi', rect: 'Rectangle',
+					ellipse: 'Ellipse'}));
+			}
+
+			if (n.type === 'shape') {
+				this.row(s2, 'Libellé en', this.selectField(n, 'valign', {topleft: 'Haut à gauche', top: 'Haut', middle: 'Centre',
+					bottom: 'Bas'}));
+			}
+
+			const size = htmlEl('span', {class: 'bm-inline'}, [
+				this.numberField(n, 'w', 12, 4000), htmlEl('span', {text: '×'}), this.numberField(n, 'h', 12, 4000)
+			]);
+
+			this.row(s2, 'Taille', size);
+			this.row(s2, 'Fond', this.colorField(n, 'fill', n.type === 'shape' ? '#f3f6f9' : '#ffffff'));
+			this.row(s2, 'Bordure', this.colorField(n, 'stroke', '#9aa7b4'));
+
+			if (n.type === 'host') {
+				this.row(s2, 'Icône', this.colorField(n, 'iconColor', '#40525e'));
+			}
+
+			this.row(s2, 'Texte', this.colorField(n, 'color', '#1f2c33'));
+			this.row(s2, 'Taille texte', this.numberField(n, 'fontSize', 6, 96));
+			this.row(s2, 'Lien (URL)', this.textField(n, 'url', {placeholder: 'https://… ou autre carte'}));
+
+			const s3 = this.section('Actions');
+
+			this.buttons(s3, [
+				['Premier plan', () => this.reorder(true)],
+				['Arrière-plan', () => this.reorder(false)],
+				['Dupliquer', () => this.duplicate(), '', 'Ctrl+D'],
+				['Supprimer', () => this.deleteSelection(), 'bm-danger', 'Suppr']
+			]);
+		}
+
+		panelLink(l) {
+			const a = this.node(l.from), b = this.node(l.to);
+			const s1 = this.section('Lien');
+
+			s1.append(htmlEl('div', {class: 'bm-link-ends', text: this.nodeLabel(a) + '  →  ' + this.nodeLabel(b)}));
+
+			this.row(s1, 'Tracé', this.selectField(l, 'style', {curve: 'Courbe', straight: 'Droit', orthogonal: 'Orthogonal'}));
+			this.row(s1, 'Libellé', this.textField(l, 'label', {multiline: true, focus: true, placeholder: 'ex : 10 Gb/s'}));
+
+			const s2 = this.section('Apparence');
+
+			this.row(s2, 'Couleur', this.colorField(l, 'color', '#6b7b88'));
+			this.row(s2, 'Épaisseur', this.numberField(l, 'width', 0.5, 20, 0.5));
+			this.row(s2, 'Trait', this.selectField(l, 'dash', {solid: 'Plein', dashed: 'Tirets', dotted: 'Pointillés'}));
+			this.row(s2, 'Flèches', this.selectField(l, 'arrow', {none: 'Aucune', end: 'À l\'arrivée', start: 'Au départ',
+				both: 'Aux deux bouts'}));
+			this.row(s2, 'Taille texte', this.numberField(l, 'fontSize', 6, 72));
+
+			const s3 = this.section('Statut');
+
+			this.row(s3, 'Colorer selon', this.selectField(l, 'status', {
+				both: 'Les deux extrémités', from: 'L\'hôte de départ', to: 'L\'hôte d\'arrivée', none: 'Jamais'
+			}));
+			s3.append(htmlEl('div', {class: 'bm-hint',
+				text: 'Le lien prend la couleur de la sévérité la plus haute des problèmes des hôtes choisis.'}));
+
+			const s4 = this.section('Actions');
+
+			this.buttons(s4, [
+				l.points.length ? ['Redresser', () => {
+					this.checkpoint();
+					l.points = [];
+					this.render();
+					this.renderPanel();
+				}, '', 'Supprimer tous les points de passage'] : null,
+				['Inverser', () => {
+					this.checkpoint();
+					[l.from, l.to] = [l.to, l.from];
+					l.points.reverse();
+					this.render();
+					this.renderPanel();
+				}, '', 'Inverser le sens du lien'],
+				['Supprimer', () => this.deleteSelection(), 'bm-danger']
+			]);
+			s4.append(htmlEl('div', {class: 'bm-hint', text: 'Glissez le lien pour le courber. Double-clic sur un point pour '
+				+ 'le retirer. Glissez une extrémité vers un autre nœud pour la reconnecter.'}));
+		}
+
+		panelMulti(nodes, links) {
+			const s = this.section(nodes.length + ' nœud(s), ' + links.length + ' lien(s)');
+
+			if (nodes.length > 1) {
+				s.append(htmlEl('div', {class: 'bm-row-label', text: 'Aligner'}));
+				this.buttons(s, [
+					['⇤', () => this.align('left'), '', 'Aligner à gauche'],
+					['↔', () => this.align('hcenter'), '', 'Centrer horizontalement'],
+					['⇥', () => this.align('right'), '', 'Aligner à droite'],
+					['⤒', () => this.align('top'), '', 'Aligner en haut'],
+					['↕', () => this.align('vcenter'), '', 'Centrer verticalement'],
+					['⤓', () => this.align('bottom'), '', 'Aligner en bas']
+				]);
+			}
+
+			if (nodes.length > 2) {
+				s.append(htmlEl('div', {class: 'bm-row-label', text: 'Répartir'}));
+				this.buttons(s, [
+					['Horizontalement', () => this.align('hdist')],
+					['Verticalement', () => this.align('vdist')]
+				]);
+			}
+
+			if (links.length) {
+				const s2 = this.section('Liens sélectionnés');
+				const proxy = {style: links[0].style, color: links[0].color, width: links[0].width};
+				const applyAll = key => {
+					links.forEach(l => l[key] = proxy[key]);
+				};
+
+				this.row(s2, 'Tracé', this.selectField(proxy, 'style', {curve: 'Courbe', straight: 'Droit',
+					orthogonal: 'Orthogonal'}, {after: () => applyAll('style')}));
+
+				const width = this.numberField(proxy, 'width', 0.5, 20, 0.5);
+
+				width.addEventListener('input', () => {
+					applyAll('width');
+					this.render();
+				});
+				this.row(s2, 'Épaisseur', width);
+			}
+
+			const s3 = this.section('Actions');
+
+			this.buttons(s3, [
+				nodes.length ? ['Premier plan', () => this.reorder(true)] : null,
+				nodes.length ? ['Arrière-plan', () => this.reorder(false)] : null,
+				nodes.length ? ['Dupliquer', () => this.duplicate()] : null,
+				['Supprimer', () => this.deleteSelection(), 'bm-danger']
+			]);
+		}
+
+		panelMap() {
+			const st = this.doc.settings;
+			const s1 = this.section('Carte');
+			const name = htmlEl('input', {type: 'text', value: this.name, maxlength: 255});
+
+			name.addEventListener('input', () => {
+				if (name.value.trim()) {
+					this.name = name.value.trim();
+					this.markDirty();
+					this.buildToolbar();
+				}
+			});
+			this.row(s1, 'Nom', name);
+			this.row(s1, 'Fond', this.colorField(st, 'background', '#ffffff'));
+			this.row(s1, 'Liens par défaut', this.selectField(st, 'linkStyle', {curve: 'Courbe', straight: 'Droit',
+				orthogonal: 'Orthogonal'}));
+			this.row(s1, 'Rafraîchir (s)', this.bind(htmlEl('input', {type: 'number', value: st.refresh, min: 10, max: 3600,
+				class: 'bm-num'}), 'change', el => {
+				st.refresh = clamp(parseInt(el.value, 10) || 30, 10, 3600);
+				this.startTimer();
+			}));
+
+			const s2 = this.section('Grille');
+
+			this.row(s2, 'Afficher', this.checkField(st, 'grid'));
+			this.row(s2, 'Magnétisme', this.checkField(st, 'snap'));
+			this.row(s2, 'Pas', this.numberField(st, 'gridSize', 2, 200));
+
+			const s3 = this.section('Sauvegarde');
+			const file = htmlEl('input', {type: 'file', accept: '.json,application/json', hidden: true});
+
+			file.addEventListener('change', () => {
+				const f = file.files[0];
+
+				if (!f) {
+					return;
+				}
+
+				f.text().then(text => {
+					const doc = normalizeDoc(JSON.parse(text));
+
+					this.checkpoint();
+					this.doc = doc;
+					this.clearSelection();
+					this.fit();
+					this.renderPanel();
+					this.refreshStatus();
+					this.notify('Carte importée (pensez à enregistrer)');
+				}).catch(() => this.notify('Fichier JSON invalide', true));
+			});
+			s3.append(file);
+			this.buttons(s3, [
+				['Exporter JSON', () => {
+					const blob = new Blob([JSON.stringify(this.doc, null, 2)], {type: 'application/json'});
+					const a = htmlEl('a', {href: URL.createObjectURL(blob),
+						download: this.name.replace(/[^\w\-]+/g, '_') + '.json'});
+
+					document.body.append(a);
+					a.click();
+					a.remove();
+					setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+				}],
+				['Importer JSON', () => file.click()]
+			]);
+
+			const s4 = this.section('Aide');
+
+			s4.append(htmlEl('ul', {class: 'bm-help'}, [
+				'Survolez un nœud et tirez depuis un de ses points bleus vers un autre nœud pour créer un lien.',
+				'Glissez un lien pour le courber ; chaque point ajouté peut être déplacé, double-clic pour le retirer.',
+				'Glissez dans le vide pour sélectionner plusieurs éléments (Maj pour ajouter).',
+				'Molette : zoom · Espace + glisser ou clic droit : déplacer la vue.',
+				'Ctrl+Z / Ctrl+Y · Ctrl+C / Ctrl+V · Ctrl+D · Suppr · flèches · Ctrl+S'
+			].map(t => htmlEl('li', {text: t}))));
+		}
+	}
+
+	/* ------------------------------------------------------------------ page liste */
+
+	function initList(cfg) {
+		const params = extra => Object.assign({[cfg.csrfName]: cfg.csrf}, extra);
+		const error = msg => alert(msg);
+		const create = () => {
+			const input = document.getElementById('bm-new-name');
+			const name = input.value.trim();
+
+			if (!name) {
+				input.focus();
+
+				return;
+			}
+
+			post('bettermap.create', params({name}))
+				.then(res => {
+					if (res.error) {
+						throw new Error(res.error);
+					}
+
+					location.href = 'zabbix.php?action=bettermap.view&edit=1&mapid=' + encodeURIComponent(res.mapid);
+				})
+				.catch(err => error(err.message));
+		};
+
+		const btn = document.getElementById('bm-create');
+
+		if (btn) {
+			btn.addEventListener('click', create);
+			document.getElementById('bm-new-name').addEventListener('keydown', e => {
+				if (e.key === 'Enter') {
+					e.preventDefault();
+					create();
+				}
+			});
+		}
+
+		document.addEventListener('click', e => {
+			const del = e.target.closest('.js-bm-delete');
+
+			if (!del) {
+				return;
+			}
+
+			if (!confirm('Supprimer la carte « ' + del.dataset.name + ' » ?')) {
+				return;
+			}
+
+			post('bettermap.delete', params({mapid: del.dataset.mapid}))
+				.then(res => {
+					if (res.error) {
+						throw new Error(res.error);
+					}
+
+					location.reload();
+				})
+				.catch(err => error(err.message));
+		});
+	}
+
+	window.BetterMaps = {
+		initMap: (root, cfg) => root.bmEditor = new MapEditor(root, cfg),
+		initList,
+		normalizeDoc
+	};
+})();

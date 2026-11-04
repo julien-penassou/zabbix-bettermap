@@ -1,0 +1,39 @@
+# Environnement de test local : Zabbix 7.2 + PostgreSQL, module monté en direct.
+# Lancement (WSL) : docker compose up -d   puis http://localhost:8099  (Admin / zabbix)
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix
+      POSTGRES_DB: zabbix
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:alpine-7.2-latest
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix
+      POSTGRES_DB: zabbix
+    depends_on: [postgres]
+
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-7.2-latest
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix
+      POSTGRES_DB: zabbix
+      ZBX_SERVER_HOST: zabbix-server
+      PHP_TZ: Europe/Paris
+    ports:
+      - "8099:8080"
+    volumes:
+      - ../bettermaps:/usr/share/zabbix/modules/bettermaps:ro
+      - ../bettermapswidget:/usr/share/zabbix/modules/bettermapswidget:ro
+    depends_on: [postgres, zabbix-server]
+
+volumes:
+  pgdata:

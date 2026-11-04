@@ -1,0 +1,43 @@
+{
+	"manifest_version": 2.0,
+	"id": "bettermaps",
+	"name": "Better Maps",
+	"version": "1.0",
+	"namespace": "BetterMaps",
+	"author": "Julien Penassou",
+	"description": "Cartes réseau façon draw.io : liens courbes déplaçables, statut des hôtes en temps réel.",
+	"actions": {
+		"bettermap.list": {
+			"class": "MapList",
+			"view": "bettermap.list"
+		},
+		"bettermap.view": {
+			"class": "MapView",
+			"view": "bettermap.view"
+		},
+		"bettermap.create": {
+			"class": "MapCreate",
+			"layout": "layout.json"
+		},
+		"bettermap.save": {
+			"class": "MapSave",
+			"layout": "layout.json"
+		},
+		"bettermap.delete": {
+			"class": "MapDelete",
+			"layout": "layout.json"
+		},
+		"bettermap.hosts": {
+			"class": "HostSearch",
+			"layout": "layout.json"
+		},
+		"bettermap.status": {
+			"class": "MapStatus",
+			"layout": "layout.json"
+		}
+	},
+	"assets": {
+		"css": ["bettermap.css"],
+		"js": ["bettermap.js"]
+	}
+}
