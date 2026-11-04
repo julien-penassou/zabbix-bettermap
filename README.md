@@ -13,19 +13,19 @@ Ce module frontend ajoute **Surveillance › Cartes+**, un éditeur de cartes in
 - export et import JSON ;
 - compatible avec les thèmes clairs et sombres de Zabbix.
 
-Un second module optionnel ajoute le widget **Carte+**, qui affiche ces cartes dans un tableau de bord.
+Le même module fournit aussi le widget **Carte+**, qui affiche ces cartes dans un tableau de bord.
 
 ## Installation
 
-1. Copier les deux dossiers dans le dossier `modules/` du frontend Zabbix :
+1. Copier le dossier `bettermaps/` dans le dossier `modules/` du frontend Zabbix :
    ```bash
-   cp -r bettermaps bettermapswidget /usr/share/zabbix/modules/
+   cp -r bettermaps /usr/share/zabbix/modules/
    ```
    Selon le mode d'installation, ce dossier peut aussi être `/usr/share/zabbix/ui/modules/` ou `/var/www/html/zabbix/modules/`. C'est le dossier qui contient déjà `widgets/`.
-2. Dans Zabbix, aller dans **Administration › Général › Modules**, cliquer sur **Analyser le répertoire**, puis activer **Better Maps** et **Carte+ (widget)**.
+2. Dans Zabbix, aller dans **Administration › Général › Modules**, cliquer sur **Analyser le répertoire**, puis activer **Better Maps**.
 3. Le menu **Surveillance › Cartes+** apparaît, et le type de widget **Carte+** est proposé dans les tableaux de bord.
 
-Le widget s'appuie sur le module principal : **Better Maps** doit rester activé.
+> **Mise à jour depuis la version 1.0** (deux modules) : supprimer le dossier `bettermapswidget/`, recopier `bettermaps/`, puis cliquer sur **Analyser le répertoire**. Les widgets « Carte+ » ajoutés avec la version 1.0 sont à recréer, car le type de widget a changé de nom. Les cartes elles-mêmes sont conservées.
 
 Au premier affichage, le module crée une table `bettermaps_map` dans la base Zabbix (PostgreSQL ou MySQL). Si l'utilisateur SQL du frontend n'a pas le droit `CREATE`, créer la table à la main avec [bettermaps/sql/create_table.sql](bettermaps/sql/create_table.sql).
 
@@ -78,20 +78,17 @@ cd test && docker compose up -d     # http://localhost:8099  (Admin / zabbix)
 
 ```
 bettermaps/
-├── manifest.json          déclaration du module (actions, assets)
-├── Module.php             ajout de l'entrée de menu
-├── actions/               contrôleurs : liste, vue, création, sauvegarde, suppression, recherche d'hôtes, statut
-├── lib/                   stockage SQL, droits, base des contrôleurs JSON
-├── views/                 pages liste et carte
-├── assets/js/bettermap.js l'éditeur SVG (sans dépendance), aussi utilisé par le widget
+├── manifest.json              module de type "widget" : pages Cartes+ + widget Carte+
+├── Widget.php                 nom du widget, ajout de l'entrée de menu
+├── actions/                   contrôleurs : liste, vue, création, sauvegarde, suppression,
+│                              recherche d'hôtes, statut, contenu du widget (WidgetView.php)
+├── includes/                  formulaire du widget (choix de la carte, boutons de zoom)
+├── lib/                       stockage SQL, statut des hôtes, droits, assets, base des contrôleurs JSON
+├── views/                     pages liste et carte, vue et formulaire du widget
+├── assets/js/bettermap.js     l'éditeur SVG (sans dépendance)
+├── assets/js/class.widget.js  classe JS du widget
 ├── assets/css/bettermap.css
-└── sql/create_table.sql   création manuelle de la table (secours)
-
-bettermapswidget/          widget de tableau de bord (module de type "widget")
-├── manifest.json
-├── Widget.php
-├── includes/              formulaire du widget (choix de la carte, boutons de zoom)
-├── actions/WidgetView.php renvoie la carte et le statut de ses hôtes en une requête
-├── views/                 vue et formulaire du widget
-└── assets/js/class.widget.js
+└── sql/create_table.sql       création manuelle de la table (secours)
 ```
+
+Zabbix ne charge le JS et le CSS d'un module de type widget que sur les tableaux de bord. Les pages Cartes+ les incluent donc elles-mêmes (voir `lib/Assets.php`). Les autres pages de Zabbix ne chargent pas l'éditeur.
