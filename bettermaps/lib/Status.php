@@ -265,6 +265,19 @@ class Status {
 			}
 		}
 
+		// Déclencheurs des liens colorés selon « autre(s) déclencheur(s) ».
+		foreach ($data['links'] ?? [] as $link) {
+			if (!is_array($link) || ($link['status'] ?? '') !== 'triggers' || !is_array($link['triggers'] ?? null)) {
+				continue;
+			}
+
+			foreach ($link['triggers'] as $trigger) {
+				if (is_array($trigger) && ctype_digit((string) ($trigger['triggerid'] ?? ''))) {
+					$ids['triggerids'][] = (string) $trigger['triggerid'];
+				}
+			}
+		}
+
 		return array_map(fn($list) => array_values(array_unique($list)), $ids);
 	}
 }

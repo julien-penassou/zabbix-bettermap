@@ -791,6 +791,64 @@ div.bm-row-label {
 	margin-bottom: 4px;
 }
 
+.bm-trig-list {
+	margin-bottom: 6px;
+}
+
+.bm-trig {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 0;
+	border-bottom: 1px solid var(--bm-border);
+}
+
+.bm-trig-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bm-trig-state {
+	flex: none;
+	padding: 0 5px;
+	border-radius: 2px;
+	font-size: 11px;
+	line-height: 16px;
+	color: var(--bm-muted);
+}
+
+.bm-trig-ok {
+	background: #3dbf75;
+	color: #fff;
+}
+
+.bm-trig-problem {
+	color: #1f2c33;
+}
+
+.bm-trig-empty {
+	color: var(--bm-muted);
+	font-style: italic;
+}
+
+.bm-trig-del {
+	flex: none;
+	border: 0;
+	background: none;
+	color: var(--bm-muted);
+	font-size: 16px;
+	cursor: pointer;
+	padding: 0 4px;
+}
+
+.bm-trig-del:hover {
+	background: none;
+	color: #d64e4e;
+}
+
 .bm-link-ends {
 	margin-bottom: 8px;
 	font-weight: bold;

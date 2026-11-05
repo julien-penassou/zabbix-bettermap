@@ -124,9 +124,10 @@
 
 	// fromPort / toPort : point de connexion fixe {x, y} relatif au nœud (0..1), ou null pour une extrémité
 	// flottante qui suit le côté le plus proche. labelPos : position du libellé le long du lien (0..1).
+	// triggers : déclencheurs qui colorent aussi le lien, [{triggerid, triggername, hostname}].
 	const LINK_DEFAULTS = {
 		points: [], style: 'curve', color: '', width: 2, dash: 'solid', arrow: 'none', label: '', fontSize: 11,
-		status: 'both', fromPort: null, toPort: null, rounded: true, labelPos: 0.5
+		status: 'both', triggers: [], fromPort: null, toPort: null, rounded: true, labelPos: 0.5
 	};
 
 	// Longueur du départ perpendiculaire d'un lien orthogonal, rayon des coins arrondis.
@@ -355,6 +356,11 @@
 			link.toPort = normalizePort(link.toPort);
 			link.rounded = link.rounded !== false;
 			link.labelPos = clamp(num(link.labelPos, 0.5), 0, 1);
+			link.triggers = (Array.isArray(link.triggers) ? link.triggers : [])
+				.filter(t => isObj(t) && /^\d+$/.test(String(t.triggerid)))
+				.map(t => ({triggerid: String(t.triggerid), triggername: String(t.triggername ?? ''),
+					hostname: String(t.hostname ?? '')}))
+				.filter((t, i, list) => list.findIndex(x => x.triggerid === t.triggerid) === i);
 			doc.links.push(link);
 		}
 
@@ -996,6 +1002,10 @@
 					.map(n => n[kind.field]))];
 			}
 
+			// Déclencheurs des liens colorés selon « autre(s) déclencheur(s) ».
+			ids.triggerids = [...new Set(ids.triggerids.concat(...this.doc.links.filter(l => l.status === 'triggers')
+				.map(l => l.triggers.map(t => t.triggerid))))];
+
 			return ids;
 		}
 
@@ -1041,6 +1051,10 @@
 			this.statusLoaded = true;
 			this.lastUpdate = new Date();
 			this.render();
+
+			if (this.panel) {
+				this.panel.querySelectorAll('[data-triggerid]').forEach(el => this.fillTriggerState(el));
+			}
 
 			if (!this.popup.hidden && this.popupNode) {
 				this.showPopup(this.popupNode);
@@ -1107,7 +1121,57 @@
 				}
 			}
 
+			for (const t of l.status === 'triggers' ? l.triggers : []) {
+				const st = this.triggerState(t.triggerid);
+
+				if (st.state === 'problem') {
+					sev = Math.max(sev, st.severity);
+				}
+			}
+
 			return sev;
+		}
+
+		// État d'un déclencheur rattaché à un lien : none (statut pas encore chargé), unknown, disabled, ok ou problem.
+		triggerState(triggerid) {
+			if (!this.statusLoaded) {
+				return {state: 'none'};
+			}
+
+			const st = this.status.triggers[triggerid];
+
+			if (!st) {
+				return {state: 'unknown'};
+			}
+
+			if (st.disabled) {
+				return {state: 'disabled'};
+			}
+
+			if (st.problems.length) {
+				return {state: 'problem', severity: Math.max(...st.problems.map(p => p.severity)), count: st.problems.length};
+			}
+
+			return {state: 'ok'};
+		}
+
+		// « Hôte : déclencheur », d'après le statut à jour si possible, sinon d'après les noms mémorisés.
+		triggerText(t) {
+			const st = this.status.triggers[t.triggerid];
+
+			return (st ? st.host : t.hostname) + ' : ' + (st ? st.name : t.triggername);
+		}
+
+		triggerStateText(triggerid) {
+			const st = this.triggerState(triggerid);
+
+			return {
+				problem: () => 'PROBLÈME (' + SEVERITIES[st.severity].name + ')',
+				ok: () => 'OK',
+				disabled: () => 'désactivé',
+				unknown: () => 'introuvable ou non autorisé',
+				none: () => '…'
+			}[st.state]();
 		}
 
 		/* ---------------- rendu */
@@ -1634,7 +1698,8 @@
 				const title = svgEl('title', {}, g);
 				const a = this.node(l.from), b = this.node(l.to);
 
-				title.textContent = this.nodeLabel(a) + ' ↔ ' + this.nodeLabel(b) + (l.label ? '\n' + l.label : '');
+				title.textContent = this.nodeLabel(a) + ' ↔ ' + this.nodeLabel(b) + (l.label ? '\n' + l.label : '')
+					+ (l.status === 'triggers' ? l.triggers : []).map(t => '\n• ' + this.triggerText(t) + ' : ' + this.triggerStateText(t.triggerid)).join('');
 			}
 		}
 
@@ -2357,7 +2422,7 @@
 					const target = d.hover ? null : this.addLinkedNode(this.node(d.from), d.cur);
 					const l = Object.assign({id: uid()}, LINK_DEFAULTS, {
 						from: d.from, to: d.hover || target.id, fromPort: d.fromPort, toPort: d.hover ? d.hoverPort : null,
-						points: [], style: this.doc.settings.linkStyle
+						points: [], triggers: [], style: this.doc.settings.linkStyle
 					});
 
 					this.doc.links.push(l);
@@ -3166,15 +3231,23 @@
 								onmousedown: e => {
 									e.preventDefault();
 									clearTimeout(timer);
-									this.checkpoint();
+
+									// opts.draft : n est un brouillon hors de la carte, opts.after fait le reste.
+									if (!opts.draft) {
+										this.checkpoint();
+									}
+
 									n[field] = r.id;
 									n[name] = r.name;
 									input.value = r.name;
 									list.hidden = true;
 									input.blur();
 									opts.after && opts.after();
-									this.render();
-									this.refreshStatus();
+
+									if (!opts.draft) {
+										this.render();
+										this.refreshStatus();
+									}
 								}
 							}, [r.name, r.detail ? htmlEl('span', {class: 'bm-hp-detail', text: r.detail}) : null]));
 						}
@@ -3340,6 +3413,85 @@
 			]);
 		}
 
+		// Pastille d'état d'un déclencheur de lien (élément portant data-triggerid).
+		fillTriggerState(el) {
+			const st = this.triggerState(el.dataset.triggerid);
+
+			el.className = 'bm-trig-state bm-trig-' + st.state;
+			el.textContent = this.triggerStateText(el.dataset.triggerid);
+			el.style.background = st.state === 'problem' ? SEVERITIES[st.severity].color : '';
+		}
+
+		// Déclencheurs qui colorent le lien : liste avec suppression, puis ajout en deux temps (hôte, déclencheur).
+		panelLinkTriggers(parent, l) {
+			parent.append(htmlEl('div', {class: 'bm-row-label', text: 'Déclencheurs'}));
+
+			const list = htmlEl('div', {class: 'bm-trig-list'});
+
+			if (!l.triggers.length) {
+				list.append(htmlEl('div', {class: 'bm-trig-empty', text: 'Aucun déclencheur'}));
+			}
+
+			l.triggers.forEach((t, i) => {
+				const state = htmlEl('span', {'data-triggerid': t.triggerid});
+
+				this.fillTriggerState(state);
+				list.append(htmlEl('div', {class: 'bm-trig'}, [
+					htmlEl('span', {class: 'bm-trig-name', text: this.triggerText(t), title: this.triggerText(t)}),
+					state,
+					htmlEl('button', {type: 'button', class: 'bm-trig-del', title: 'Retirer ce déclencheur', text: '×',
+						onclick: e => {
+							e.preventDefault();
+							this.checkpoint();
+							l.triggers.splice(i, 1);
+							this.render();
+							this.renderPanel();
+						}})
+				]));
+			});
+
+			parent.append(list);
+
+			// Brouillon de l'ajout en cours, conservé tant que le même lien reste affiché.
+			if (!this.trigDraft || this.trigDraft.link !== l.id) {
+				this.trigDraft = {link: l.id, hostid: '', hostname: '', triggerid: '', triggername: ''};
+			}
+
+			const draft = this.trigDraft;
+			const focusTrigger = () => {
+				const input = this.panel.querySelector('.bm-picker-trigger input');
+
+				input && input.focus();
+			};
+
+			this.row(parent, 'Hôte', this.picker(draft, 'host', 'hostid', 'hostname', {
+				draft: true,
+				after: () => {
+					draft.triggerid = '';
+					draft.triggername = '';
+					this.renderPanel();
+					focusTrigger();
+				}
+			}));
+			this.row(parent, 'Ajouter', this.picker(draft, 'trigger', 'triggerid', 'triggername', {
+				draft: true,
+				params: {hostid: draft.hostid},
+				disabled: !draft.hostid,
+				after: () => {
+					if (!l.triggers.some(t => t.triggerid === draft.triggerid)) {
+						this.checkpoint();
+						l.triggers.push({triggerid: draft.triggerid, triggername: draft.triggername, hostname: draft.hostname});
+					}
+
+					draft.triggerid = '';
+					draft.triggername = '';
+					this.render();
+					this.renderPanel();
+					this.refreshStatus();
+				}
+			}));
+		}
+
 		panelLink(l) {
 			const a = this.node(l.from), b = this.node(l.to);
 			const s1 = this.section('Lien');
@@ -3390,11 +3542,18 @@
 
 			const s3 = this.section('Statut');
 
-			this.row(s3, 'Colorer selon', this.selectField(l, 'status', {
-				both: 'Les deux extrémités', from: 'Le nœud de départ', to: 'Le nœud d\'arrivée', none: 'Jamais'
-			}));
-			s3.append(htmlEl('div', {class: 'bm-hint',
-				text: 'Le lien prend la couleur de la sévérité la plus haute des problèmes des nœuds choisis '
+			this.row(s3, 'Déclenchement', this.selectField(l, 'status', {
+				both: 'Les deux extrémités', from: 'Le nœud de départ', to: 'Le nœud d\'arrivée',
+				triggers: 'Autre(s) déclencheur(s)', none: 'Jamais'
+			}, {panel: true, after: () => this.refreshStatus()}));
+
+			if (l.status === 'triggers') {
+				this.panelLinkTriggers(s3, l);
+			}
+
+			s3.append(htmlEl('div', {class: 'bm-hint', text: l.status === 'triggers'
+				? 'Le lien prend la couleur de la sévérité la plus haute des problèmes des déclencheurs ci-dessus.'
+				: 'Le lien prend la couleur de la sévérité la plus haute des problèmes des nœuds choisis '
 					+ '(hôtes, groupes, items ou déclencheurs).'}));
 
 			const s4 = this.section('Actions');

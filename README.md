@@ -10,7 +10,7 @@ Ce module frontend ajoute **Surveillance › Cartes+**, un éditeur de cartes in
 - groupes d'hôtes : statut cumulé des hôtes surveillés du groupe (sévérité la plus haute, nombre de problèmes, hôtes en problème) ;
 - items : dernière valeur affichée en direct (unités et tables de correspondance appliquées), statut d'après les déclencheurs de l'item ;
 - déclencheurs : état OK / PROBLÈME aux couleurs de la sévérité, problèmes actifs au clic ;
-- liens colorés selon la sévérité des problèmes de leurs extrémités (hôte, groupe, item ou déclencheur) ;
+- liens colorés selon la sévérité des problèmes de leurs extrémités (hôte, groupe, item ou déclencheur), ou d'un ou plusieurs autres déclencheurs choisis pour le lien ;
 - zones (rectangles, ellipses) et textes libres, avec mise en forme du texte : police, taille, couleur, gras, italique, souligné, alignement horizontal (gauche, centre, droite) et vertical (haut, milieu, bas) ;
 - annuler/rétablir, copier/coller (y compris entre deux cartes), alignement et répartition, grille magnétique ;
 - mode visualisation : rafraîchissement automatique, popup des problèmes au clic, plein écran ;
