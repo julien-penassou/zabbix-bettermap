@@ -7,7 +7,7 @@ use Modules\BetterMaps\Lib\JsonController;
 use Modules\BetterMaps\Lib\Status;
 
 /**
- * Statut temps réel des objets d'une carte : hôtes, groupes d'hôtes, items.
+ * Statut temps réel des objets d'une carte : hôtes, groupes d'hôtes, items, déclencheurs.
  */
 class MapStatus extends JsonController {
 
@@ -15,7 +15,8 @@ class MapStatus extends JsonController {
 		return $this->validateJson([
 			'hostids' => 'array_id',
 			'groupids' => 'array_id',
-			'itemids' => 'array_id'
+			'itemids' => 'array_id',
+			'triggerids' => 'array_id'
 		]);
 	}
 
@@ -27,7 +28,8 @@ class MapStatus extends JsonController {
 		$this->respond(Status::get([
 			'hostids' => $this->getInput('hostids', []),
 			'groupids' => $this->getInput('groupids', []),
-			'itemids' => $this->getInput('itemids', [])
+			'itemids' => $this->getInput('itemids', []),
+			'triggerids' => $this->getInput('triggerids', [])
 		]));
 	}
 }

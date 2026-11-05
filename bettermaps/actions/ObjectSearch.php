@@ -7,13 +7,13 @@ use Modules\BetterMaps\Lib\Access;
 use Modules\BetterMaps\Lib\JsonController;
 
 /**
- * Recherche d'objets Zabbix pour l'éditeur : hôtes, groupes d'hôtes, items d'un hôte.
+ * Recherche d'objets Zabbix pour l'éditeur : hôtes, groupes d'hôtes, items et déclencheurs d'un hôte.
  */
 class ObjectSearch extends JsonController {
 
 	protected function checkInput(): bool {
 		return $this->validateJson([
-			'type' => 'required|in host,group,item',
+			'type' => 'required|in host,group,item,trigger',
 			'search' => 'string',
 			'hostid' => 'id'
 		]);
@@ -72,6 +72,32 @@ class ObjectSearch extends JsonController {
 
 				foreach (API::Item()->get($options) as $item) {
 					$results[] = ['id' => $item['itemid'], 'name' => $item['name'], 'detail' => $item['key_']];
+				}
+				break;
+
+			case 'trigger':
+				if (!$this->hasInput('hostid')) {
+					break;
+				}
+
+				$options = [
+					'output' => ['triggerid', 'description', 'priority'],
+					'hostids' => [$this->getInput('hostid')],
+					'expandDescription' => true,
+					'sortfield' => 'description',
+					'limit' => 50
+				];
+
+				if ($search !== '') {
+					$options['search'] = ['description' => $search];
+				}
+
+				foreach (API::Trigger()->get($options) as $trigger) {
+					$results[] = [
+						'id' => $trigger['triggerid'],
+						'name' => $trigger['description'],
+						'severity' => (int) $trigger['priority']
+					];
 				}
 				break;
 		}

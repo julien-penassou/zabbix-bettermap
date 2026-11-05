@@ -5,24 +5,27 @@ namespace Modules\BetterMaps\Lib;
 use API;
 
 /**
- * Statut temps réel des objets Zabbix d'une carte : hôtes, groupes d'hôtes et items.
+ * Statut temps réel des objets Zabbix d'une carte : hôtes, groupes d'hôtes, items et déclencheurs.
  * Les droits de l'utilisateur sont appliqués par l'API (un objet non visible n'est pas renvoyé).
  */
 class Status {
 
 	/**
-	 * @param array $ids  ['hostids' => [...], 'groupids' => [...], 'itemids' => [...]]
+	 * @param array $ids  ['hostids' => [...], 'groupids' => [...], 'itemids' => [...], 'triggerids' => [...]]
 	 *
-	 * @return array  ['hosts' => {hostid: …}, 'groups' => {groupid: …}, 'items' => {itemid: …}]
+	 * @return array  ['hosts' => {hostid: …}, 'groups' => {groupid: …}, 'items' => {itemid: …},
+	 *                 'triggers' => {triggerid: …}]
 	 */
 	public static function get(array $ids): array {
 		$hostids = array_values(array_unique($ids['hostids'] ?? []));
 		$groupids = array_values(array_unique($ids['groupids'] ?? []));
 		$itemids = array_values(array_unique($ids['itemids'] ?? []));
+		$triggerids = array_values(array_unique($ids['triggerids'] ?? []));
 
 		$hosts = [];
 		$groups = [];
 		$items = [];
+		$triggers = [];
 
 		// Hôtes dont il faut chercher les problèmes : ceux de la carte, ceux des groupes, ceux des items.
 		$problem_hostids = [];
@@ -125,8 +128,37 @@ class Status {
 			}
 		}
 
+		if ($triggerids) {
+			$db_triggers = API::Trigger()->get([
+				'output' => ['triggerid', 'description', 'priority', 'value', 'status', 'state'],
+				'selectHosts' => ['hostid', 'name', 'status'],
+				'triggerids' => $triggerids,
+				'expandDescription' => true,
+				'preservekeys' => true
+			]);
+
+			foreach ($db_triggers as $triggerid => $trigger) {
+				$host = $trigger['hosts'][0] ?? ['hostid' => '', 'name' => '', 'status' => HOST_STATUS_MONITORED];
+
+				$triggers[$triggerid] = [
+					'name' => $trigger['description'],
+					'hostid' => $host['hostid'],
+					'host' => $host['name'],
+					'severity' => (int) $trigger['priority'],
+					'unsupported' => $trigger['state'] == TRIGGER_STATE_UNKNOWN,
+					'disabled' => $trigger['status'] != TRIGGER_STATUS_ENABLED
+						|| $host['status'] == HOST_STATUS_NOT_MONITORED,
+					'problems' => []
+				];
+
+				foreach ($trigger['hosts'] as $trigger_host) {
+					$problem_hostids[$trigger_host['hostid']] = true;
+				}
+			}
+		}
+
 		if ($problem_hostids) {
-			self::addProblems(array_keys($problem_hostids), $hosts, $groups, $items, $group_members);
+			self::addProblems(array_keys($problem_hostids), $hosts, $groups, $items, $triggers, $group_members);
 		}
 
 		foreach ($groups as &$group) {
@@ -138,15 +170,17 @@ class Status {
 		return [
 			'hosts' => (object) $hosts,
 			'groups' => (object) $groups,
-			'items' => (object) $items
+			'items' => (object) $items,
+			'triggers' => (object) $triggers
 		];
 	}
 
 	/**
-	 * Répartit les problèmes actifs entre hôtes, groupes (via leurs hôtes) et items (via les déclencheurs).
+	 * Répartit les problèmes actifs entre hôtes, groupes (via leurs hôtes), items (via les déclencheurs)
+	 * et déclencheurs.
 	 */
 	private static function addProblems(array $hostids, array &$hosts, array &$groups, array &$items,
-			array $group_members): void {
+			array &$triggers, array $group_members): void {
 		$problems = API::Problem()->get([
 			'output' => ['eventid', 'objectid', 'name', 'severity', 'clock', 'acknowledged'],
 			'source' => EVENT_SOURCE_TRIGGERS,
@@ -162,7 +196,7 @@ class Status {
 			return;
 		}
 
-		$triggers = API::Trigger()->get([
+		$db_triggers = API::Trigger()->get([
 			'output' => [],
 			'selectHosts' => ['hostid', 'name'],
 			'selectItems' => $items ? ['itemid'] : null,
@@ -171,11 +205,11 @@ class Status {
 		]);
 
 		foreach ($problems as $problem) {
-			if (!array_key_exists($problem['objectid'], $triggers)) {
+			if (!array_key_exists($problem['objectid'], $db_triggers)) {
 				continue;
 			}
 
-			$trigger = $triggers[$problem['objectid']];
+			$trigger = $db_triggers[$problem['objectid']];
 			$entry = [
 				'eventid' => $problem['eventid'],
 				'name' => $problem['name'],
@@ -204,6 +238,10 @@ class Status {
 					$items[$trigger_item['itemid']]['problems'][] = $entry;
 				}
 			}
+
+			if (array_key_exists($problem['objectid'], $triggers)) {
+				$triggers[$problem['objectid']]['problems'][] = $entry;
+			}
 		}
 	}
 
@@ -211,8 +249,9 @@ class Status {
 	 * Identifiants des objets Zabbix utilisés dans une carte.
 	 */
 	public static function mapObjects(array $data): array {
-		$ids = ['hostids' => [], 'groupids' => [], 'itemids' => []];
-		$fields = ['host' => ['hostid', 'hostids'], 'group' => ['groupid', 'groupids'], 'item' => ['itemid', 'itemids']];
+		$ids = ['hostids' => [], 'groupids' => [], 'itemids' => [], 'triggerids' => []];
+		$fields = ['host' => ['hostid', 'hostids'], 'group' => ['groupid', 'groupids'], 'item' => ['itemid', 'itemids'],
+			'trigger' => ['triggerid', 'triggerids']];
 
 		foreach ($data['nodes'] ?? [] as $node) {
 			if (!is_array($node) || !array_key_exists($node['type'] ?? '', $fields)) {

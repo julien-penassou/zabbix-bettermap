@@ -59,6 +59,8 @@
 			color: '', iconColor: '', fontSize: 12, url: ''},
 		item: {w: 150, h: 54, label: '', hostid: '', hostname: '', itemid: '', itemname: '', shape: 'round', fill: '',
 			stroke: '', color: '', fontSize: 13, url: ''},
+		trigger: {w: 180, h: 54, label: '', hostid: '', hostname: '', triggerid: '', triggername: '', shape: 'round',
+			fill: '', stroke: '', color: '', fontSize: 13, url: ''},
 		shape: {w: 200, h: 120, label: 'Zone', shape: 'round', fill: '', stroke: '', color: '', fontSize: 13, url: '',
 			valign: 'topleft'},
 		text: {w: 120, h: 30, label: 'Texte', fill: '', stroke: '', color: '', fontSize: 14, url: ''}
@@ -68,7 +70,8 @@
 	const OBJECT_TYPES = {
 		host: {field: 'hostid', name: 'hostname', status: 'hosts', ids: 'hostids'},
 		group: {field: 'groupid', name: 'groupname', status: 'groups', ids: 'groupids'},
-		item: {field: 'itemid', name: 'itemname', status: 'items', ids: 'itemids'}
+		item: {field: 'itemid', name: 'itemname', status: 'items', ids: 'itemids'},
+		trigger: {field: 'triggerid', name: 'triggername', status: 'triggers', ids: 'triggerids'}
 	};
 
 	// Hôtes et groupes : icône avec le libellé dessous.
@@ -76,8 +79,13 @@
 		return n.type === 'host' || n.type === 'group';
 	}
 
+	// Items et déclencheurs : objets d'un hôte, choisis en deux temps (l'hôte, puis l'objet), affichés en boîte.
+	function isHostChild(n) {
+		return n.type === 'item' || n.type === 'trigger';
+	}
+
 	function emptyStatus() {
-		return {hosts: {}, groups: {}, items: {}};
+		return {hosts: {}, groups: {}, items: {}, triggers: {}};
 	}
 
 	// fromPort / toPort : point de connexion fixe {x, y} relatif au nœud (0..1), ou null pour une extrémité
@@ -724,6 +732,7 @@
 					btn('+ Hôte', 'Ajouter un hôte Zabbix', () => this.addNode('host')),
 					btn('+ Groupe', 'Ajouter un groupe d\'hôtes (statut cumulé de ses hôtes)', () => this.addNode('group')),
 					btn('+ Item', 'Ajouter un item (dernière valeur et statut de ses déclencheurs)', () => this.addNode('item')),
+					btn('+ Déclencheur', 'Ajouter un déclencheur (OK ou en problème)', () => this.addNode('trigger')),
 					btn('+ Zone', 'Ajouter un rectangle / une zone', () => this.addNode('shape', {shape: 'round'})),
 					btn('+ Ellipse', 'Ajouter une ellipse', () => this.addNode('shape', {shape: 'ellipse', w: 140, h: 90,
 						label: ''})),
@@ -845,7 +854,8 @@
 			}
 
 			const st = this.objStatus(n);
-			const empty = {host: '(choisir un hôte)', group: '(choisir un groupe)', item: '(choisir un item)'}[n.type];
+			const empty = {host: '(choisir un hôte)', group: '(choisir un groupe)', item: '(choisir un item)',
+				trigger: '(choisir un déclencheur)'}[n.type];
 
 			return st ? st.name : (n[kind.name] || (this.edit ? empty : ''));
 		}
@@ -905,7 +915,7 @@
 
 		/* ---------------- statut Zabbix */
 
-		// {hostids: [...], groupids: [...], itemids: [...]} des objets Zabbix de la carte.
+		// {hostids: [...], groupids: [...], itemids: [...], triggerids: [...]} des objets Zabbix de la carte.
 		objectIds() {
 			const ids = {};
 
@@ -1080,8 +1090,8 @@
 				if (isDevice(n)) {
 					this.renderDevice(g, n);
 				}
-				else if (n.type === 'item') {
-					this.renderItem(g, n);
+				else if (isHostChild(n)) {
+					this.renderBox(g, n);
 				}
 				else if (n.type === 'shape') {
 					const body = shapeEl(n.shape, n.w, n.h, {class: 'bm-body'}, g);
@@ -1133,7 +1143,7 @@
 			}
 		}
 
-		// Corps d'un nœud Zabbix (hôte, groupe, item) : halo et bordure colorés selon la sévérité.
+		// Corps d'un nœud Zabbix (hôte, groupe, item, déclencheur) : halo et bordure colorés selon la sévérité.
 		renderStatusBody(g, n, st) {
 			const sevColor = st.state === 'problem' ? SEVERITIES[st.severity].color : null;
 
@@ -1204,6 +1214,9 @@
 				else if (n.type === 'item') {
 					text = info.host + ' : ' + info.name + '\n' + (info.value ?? 'aucune donnée');
 				}
+				else if (n.type === 'trigger') {
+					text = info.host + ' : ' + info.name + '\nSévérité : ' + SEVERITIES[info.severity].name;
+				}
 
 				text += info.problems.length
 					? '\n' + info.problems.map(p => '• ' + (n.type === 'group' ? p.host + ' : ' : '') + p.name).join('\n')
@@ -1213,29 +1226,47 @@
 			title.textContent = text;
 		}
 
-		renderItem(g, n) {
-			const st = this.nodeStatus(n);
+		// Ligne principale d'une boîte item / déclencheur : [texte, couleur imposée ou null].
+		boxValue(n, st, sevColor) {
 			const info = this.objStatus(n);
-			const sevColor = this.renderStatusBody(g, n, st);
-			const label = this.nodeLabel(n);
-			let value = '';
 
-			if (info) {
-				value = info.value ?? '—';
+			if (!info) {
+				return [n[OBJECT_TYPES[n.type].field] && this.statusLoaded ? '?' : '', null];
 			}
-			else if (n.itemid && this.statusLoaded) {
-				value = '?';
+
+			if (n.type === 'item') {
+				return [info.value ?? '—', null];
 			}
+
+			// Déclencheur : son état, aux couleurs de Zabbix.
+			return {
+				problem: ['PROBLÈME', sevColor],
+				ok: ['OK', OK_COLOR],
+				disabled: ['Désactivé', null],
+				unsupported: ['Inconnu', null]
+			}[st.state] || ['', null];
+		}
+
+		renderBox(g, n) {
+			const st = this.nodeStatus(n);
+			const sevColor = this.renderStatusBody(g, n, st);
+			const [value, valueColor] = this.boxValue(n, st, sevColor);
+			// Noms longs (fréquents pour les déclencheurs) coupés à la largeur de la boîte ; le nom complet
+			// reste dans l'infobulle.
+			const size = value !== '' ? n.fontSize * 0.8 : n.fontSize;
+			const max = Math.max(4, Math.floor((n.w - 16) / (size * 0.55)));
+			const label = this.nodeLabel(n).split('\n')
+				.map(line => line.length > max ? line.slice(0, max - 1) + '…' : line).join('\n');
 
 			if (label && value !== '') {
 				drawText(g, label, n.w / 2, n.h * 0.3, {size: n.fontSize * 0.8, color: n.color, valign: 'middle',
 					cls: 'bm-label bm-item-name'});
-				drawText(g, value, n.w / 2, n.h * 0.67, {size: n.fontSize * 1.4, color: n.color, valign: 'middle',
-					cls: 'bm-label bm-item-value'});
+				drawText(g, value, n.w / 2, n.h * 0.67, {size: n.fontSize * 1.4, color: valueColor || n.color,
+					valign: 'middle', cls: 'bm-label bm-item-value'});
 			}
 			else if (label || value !== '') {
-				drawText(g, label || value, n.w / 2, n.h / 2, {size: n.fontSize, color: n.color, valign: 'middle',
-					cls: 'bm-label' + (label ? '' : ' bm-item-value')});
+				drawText(g, label || value, n.w / 2, n.h / 2, {size: n.fontSize, color: (label ? null : valueColor) || n.color,
+					valign: 'middle', cls: 'bm-label' + (label ? '' : ' bm-item-value')});
 			}
 
 			this.renderBadges(g, n, st, sevColor);
@@ -2188,7 +2219,7 @@
 		addLinkedNode(src, p) {
 			const n = Object.assign({}, src, {id: uid()});
 
-			// Le nouveau nœud reste à configurer ; un item garde l'hôte de la source (autre item du même hôte).
+			// Le nouveau nœud reste à configurer ; un item ou un déclencheur garde l'hôte de la source.
 			const kind = OBJECT_TYPES[n.type];
 
 			if (kind) {
@@ -2476,7 +2507,7 @@
 				return;
 			}
 
-			const cls = n.type === 'item' && n.hostid ? '.bm-picker-item' : '.bm-picker';
+			const cls = isHostChild(n) && n.hostid ? '.bm-picker-' + n.type : '.bm-picker';
 			const input = this.panel.querySelector(cls + ' input');
 
 			input && input.focus();
@@ -2695,7 +2726,7 @@
 				return;
 			}
 
-			const what = {host: 'Hôte', group: 'Groupe', item: 'Item'}[n.type];
+			const what = {host: 'Hôte', group: 'Groupe', item: 'Item', trigger: 'Déclencheur'}[n.type];
 
 			p.append(htmlEl('div', {class: 'bm-popup-title', text: st ? st.name : (n[kind.name] || what)}));
 
@@ -2714,6 +2745,20 @@
 
 					if (st.unsupported) {
 						p.append(htmlEl('div', {class: 'bm-popup-empty', text: 'Item non supporté'}));
+					}
+				}
+
+				if (n.type === 'trigger') {
+					p.append(
+						htmlEl('div', {class: 'bm-popup-sub', text: st.host}),
+						htmlEl('div', {class: 'bm-popup-value'}, [
+							htmlEl('span', {class: 'bm-sev', style: 'background:' + SEVERITIES[st.severity].color}),
+							htmlEl('span', {text: SEVERITIES[st.severity].name})
+						])
+					);
+
+					if (st.unsupported) {
+						p.append(htmlEl('div', {class: 'bm-popup-empty', text: 'État inconnu (expression non évaluable)'}));
 					}
 				}
 
@@ -2784,6 +2829,16 @@
 					['Problèmes', 'zabbix.php?action=problem.view&filter_set=1&groupids%5B%5D=' + id],
 					['Hôtes', 'zabbix.php?action=host.view&filter_set=1&groupids%5B%5D=' + id],
 					['Dernières données', 'zabbix.php?action=latest.view&filter_set=1&groupids%5B%5D=' + id]
+				];
+			}
+
+			if (n.type === 'trigger') {
+				const hostid = encodeURIComponent(st ? st.hostid : n.hostid);
+
+				return [
+					['Problèmes', 'zabbix.php?action=problem.view&filter_set=1&triggerids%5B%5D='
+						+ encodeURIComponent(n.triggerid)],
+					['Dernières données', 'zabbix.php?action=latest.view&filter_set=1&hostids%5B%5D=' + hostid]
 				];
 			}
 
@@ -2957,13 +3012,14 @@
 			return wrap;
 		}
 
-		// Sélecteur d'objet Zabbix avec recherche. type : host, group ou item ; n[field] / n[name] reçoivent
+		// Sélecteur d'objet Zabbix avec recherche. type : host, group, item ou trigger ; n[field] / n[name] reçoivent
 		// l'identifiant et le nom choisis. opts.params : paramètres de recherche en plus, opts.after : après le choix.
 		picker(n, type, field, name, opts = {}) {
 			const texts = {
 				host: ['Rechercher un hôte…', 'Aucun hôte trouvé'],
 				group: ['Rechercher un groupe…', 'Aucun groupe trouvé'],
-				item: ['Rechercher un item (nom ou clé)…', 'Aucun item trouvé']
+				item: ['Rechercher un item (nom ou clé)…', 'Aucun item trouvé'],
+				trigger: ['Rechercher un déclencheur…', 'Aucun déclencheur trouvé']
 			}[type];
 			const input = htmlEl('input', {type: 'text', value: n[name], placeholder: texts[0], disabled: opts.disabled});
 			const list = htmlEl('div', {class: 'bm-hp-list', hidden: true});
@@ -2993,6 +3049,11 @@
 						}
 
 						for (const r of results) {
+							// Déclencheurs : la sévérité sert de détail.
+							if (!r.detail && r.severity !== undefined && SEVERITIES[r.severity]) {
+								r.detail = SEVERITIES[r.severity].name;
+							}
+
 							list.append(htmlEl('div', {
 								class: 'bm-hp-item' + (r.id === n[field] ? ' bm-current' : ''),
 								title: r.detail || null,
@@ -3055,8 +3116,8 @@
 		}
 
 		panelNode(n) {
-			const typeNames = {host: 'Hôte Zabbix', group: 'Groupe d\'hôtes', item: 'Item', shape: 'Forme / zone',
-				text: 'Texte'};
+			const typeNames = {host: 'Hôte Zabbix', group: 'Groupe d\'hôtes', item: 'Item', trigger: 'Déclencheur',
+				shape: 'Forme / zone', text: 'Texte'};
 			const s1 = this.section(typeNames[n.type]);
 
 			this.row(s1, 'Type', this.selectField(n, 'type', typeNames, {
@@ -3070,24 +3131,28 @@
 				}
 			}));
 
-			if (n.type === 'host' || n.type === 'item') {
+			if (n.type === 'host' || isHostChild(n)) {
 				this.row(s1, 'Hôte', this.picker(n, 'host', 'hostid', 'hostname', {
 					after: () => {
-						if (n.type !== 'item') {
+						if (!isHostChild(n)) {
 							return;
 						}
 
-						// Nouvel hôte : l'item précédent n'en fait plus partie.
-						n.itemid = '';
-						n.itemname = '';
+						// Nouvel hôte : l'item ou le déclencheur précédent n'en fait plus partie.
+						const kind = OBJECT_TYPES[n.type];
+
+						n[kind.field] = '';
+						n[kind.name] = '';
 						this.renderPanel();
 						this.focusPicker(n);
 					}
 				}));
 			}
 
-			if (n.type === 'item') {
-				this.row(s1, 'Item', this.picker(n, 'item', 'itemid', 'itemname', {
+			if (isHostChild(n)) {
+				const kind = OBJECT_TYPES[n.type];
+
+				this.row(s1, typeNames[n.type], this.picker(n, n.type, kind.field, kind.name, {
 					params: {hostid: n.hostid},
 					disabled: !n.hostid
 				}));
@@ -3100,7 +3165,7 @@
 			this.row(s1, 'Libellé', this.textField(n, 'label', {
 				multiline: true, focus: true,
 				placeholder: {host: 'Nom de l\'hôte par défaut', group: 'Nom du groupe par défaut',
-					item: 'Nom de l\'item par défaut'}[n.type] || ''
+					item: 'Nom de l\'item par défaut', trigger: 'Nom du déclencheur par défaut'}[n.type] || ''
 			}));
 
 			if (isDevice(n)) {
@@ -3202,7 +3267,7 @@
 			}));
 			s3.append(htmlEl('div', {class: 'bm-hint',
 				text: 'Le lien prend la couleur de la sévérité la plus haute des problèmes des nœuds choisis '
-					+ '(hôtes, groupes ou items).'}));
+					+ '(hôtes, groupes, items ou déclencheurs).'}));
 
 			const s4 = this.section('Actions');
 
