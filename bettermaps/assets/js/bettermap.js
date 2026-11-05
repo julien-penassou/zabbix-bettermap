@@ -59,10 +59,16 @@
 		text: {w: 120, h: 30, label: 'Texte', fill: '', stroke: '', color: '', fontSize: 14, url: ''}
 	};
 
+	// fromPort / toPort : point de connexion fixe {x, y} relatif au nœud (0..1), ou null pour une extrémité
+	// flottante qui suit le côté le plus proche. labelPos : position du libellé le long du lien (0..1).
 	const LINK_DEFAULTS = {
 		points: [], style: 'curve', color: '', width: 2, dash: 'solid', arrow: 'none', label: '', fontSize: 11,
-		status: 'both'
+		status: 'both', fromPort: null, toPort: null, rounded: true, labelPos: 0.5
 	};
+
+	// Longueur du départ perpendiculaire d'un lien orthogonal, rayon des coins arrondis.
+	const ORTHO_STUB = 16;
+	const CORNER_RADIUS = 10;
 
 	const CLIPBOARD_KEY = 'bettermaps.clipboard';
 
@@ -263,6 +269,10 @@
 			link.width = clamp(num(link.width, 2), 0.5, 20);
 			link.fontSize = clamp(num(link.fontSize, 11), 6, 72);
 			link.label = String(link.label ?? '');
+			link.fromPort = normalizePort(link.fromPort);
+			link.toPort = normalizePort(link.toPort);
+			link.rounded = link.rounded !== false;
+			link.labelPos = clamp(num(link.labelPos, 0.5), 0, 1);
 			doc.links.push(link);
 		}
 
@@ -305,6 +315,168 @@
 		}
 
 		return {x: c.x + dx * s, y: c.y + dy * s};
+	}
+
+	function normalizePort(p) {
+		return isObj(p) && Number.isFinite(parseFloat(p.x)) && Number.isFinite(parseFloat(p.y))
+			? {x: clamp(num(p.x, 0.5), 0, 1), y: clamp(num(p.y, 0.5), 0, 1)}
+			: null;
+	}
+
+	function samePort(a, b) {
+		return !!a && !!b && Math.abs(a.x - b.x) < 1e-3 && Math.abs(a.y - b.y) < 1e-3;
+	}
+
+	// Points de connexion proposés : 3 par côté pour un rectangle, tous les 30° pour une ellipse.
+	function nodePorts(n) {
+		const r = v => Math.round(v * 10000) / 10000;
+
+		if (isEllipse(n)) {
+			return Array.from({length: 12}, (_, i) => ({
+				x: r(0.5 + Math.cos(i * Math.PI / 6) / 2),
+				y: r(0.5 + Math.sin(i * Math.PI / 6) / 2)
+			}));
+		}
+
+		const ports = [];
+
+		for (const s of [0.25, 0.5, 0.75]) {
+			ports.push({x: s, y: 0}, {x: 1, y: s}, {x: s, y: 1}, {x: 0, y: s});
+		}
+
+		return ports;
+	}
+
+	// Normale sortante au point de connexion.
+	function portNormal(n, port) {
+		if (isEllipse(n)) {
+			return unit((2 * port.x - 1) / n.w, (2 * port.y - 1) / n.h);
+		}
+
+		const d = [port.x, 1 - port.x, port.y, 1 - port.y];
+		const side = d.indexOf(Math.min(...d));
+
+		return [{x: -1, y: 0}, {x: 1, y: 0}, {x: 0, y: -1}, {x: 0, y: 1}][side];
+	}
+
+	// Position du point de connexion. Sous un hôte, les points du bas passent sous le libellé.
+	function portPoint(n, port, extra_bottom = 0, gap = 2) {
+		let px = port.x, py = port.y;
+
+		if (isEllipse(n)) {
+			const v = unit(2 * px - 1, 2 * py - 1);
+
+			px = 0.5 + v.x / 2;
+			py = 0.5 + v.y / 2;
+		}
+
+		const nm = portNormal(n, port);
+
+		return {
+			x: n.x + px * n.w + nm.x * gap,
+			y: n.y + py * n.h + nm.y * gap + (py > 0.999 ? extra_bottom : 0)
+		};
+	}
+
+	function axisDir(v) {
+		return Math.abs(v.x) >= Math.abs(v.y) ? {x: Math.sign(v.x) || 1, y: 0} : {x: 0, y: Math.sign(v.y) || 1};
+	}
+
+	// Supprime les doublons, les points intermédiaires alignés et les allers-retours sur une même ligne.
+	function simplifyOrtho(pts) {
+		const out = [];
+
+		for (const p of pts) {
+			const last = out[out.length - 1];
+
+			if (last && Math.abs(last.x - p.x) < 0.5 && Math.abs(last.y - p.y) < 0.5) {
+				continue;
+			}
+
+			if (out.length >= 2) {
+				const o = out[out.length - 2];
+				const vert = Math.abs(o.x - last.x) < 0.5 && Math.abs(last.x - p.x) < 0.5;
+				const horiz = Math.abs(o.y - last.y) < 0.5 && Math.abs(last.y - p.y) < 0.5;
+
+				// Le point de départ (sur le nœud) est conservé même si le tracé repart en arrière.
+				if (vert || horiz) {
+					if (out.length > 2 || (vert ? (last.y - o.y) * (p.y - last.y) : (last.x - o.x) * (p.x - last.x)) > 0) {
+						out[out.length - 1] = p;
+						continue;
+					}
+				}
+			}
+
+			out.push(p);
+		}
+
+		return out.length >= 2 ? out : [pts[0], pts[pts.length - 1]];
+	}
+
+	// Itinéraire automatique entre les deux départs perpendiculaires S1 et E1 (façon draw.io).
+	function orthoAuto(S1, dS, E1, dE) {
+		const sh = dS.x !== 0, eh = dE.x !== 0;
+
+		if (sh && eh) {
+			if (dS.x === dE.x) {
+				const x = dS.x > 0 ? Math.max(S1.x, E1.x) : Math.min(S1.x, E1.x);
+
+				return [{x, y: S1.y}, {x, y: E1.y}];
+			}
+
+			if ((E1.x - S1.x) * dS.x > 0) {
+				const x = (S1.x + E1.x) / 2;
+
+				return [{x, y: S1.y}, {x, y: E1.y}];
+			}
+
+			const y = (S1.y + E1.y) / 2;
+
+			return [{x: S1.x, y}, {x: E1.x, y}];
+		}
+
+		if (!sh && !eh) {
+			if (dS.y === dE.y) {
+				const y = dS.y > 0 ? Math.max(S1.y, E1.y) : Math.min(S1.y, E1.y);
+
+				return [{x: S1.x, y}, {x: E1.x, y}];
+			}
+
+			if ((E1.y - S1.y) * dS.y > 0) {
+				const y = (S1.y + E1.y) / 2;
+
+				return [{x: S1.x, y}, {x: E1.x, y}];
+			}
+
+			const x = (S1.x + E1.x) / 2;
+
+			return [{x, y: S1.y}, {x, y: E1.y}];
+		}
+
+		return sh ? [{x: E1.x, y: S1.y}] : [{x: S1.x, y: E1.y}];
+	}
+
+	// Polyligne, avec coins arrondis si r > 0.
+	function polyPath(p, r) {
+		let d = `M${p[0].x},${p[0].y}`;
+
+		for (let i = 1; i < p.length - 1; i++) {
+			const a = p[i - 1], b = p[i], c = p[i + 1];
+			const rr = Math.min(r, Math.hypot(b.x - a.x, b.y - a.y) / 2, Math.hypot(c.x - b.x, c.y - b.y) / 2);
+
+			if (rr < 1) {
+				d += ` L${b.x},${b.y}`;
+				continue;
+			}
+
+			const u1 = unit(b.x - a.x, b.y - a.y), u2 = unit(c.x - b.x, c.y - b.y);
+
+			d += ` L${b.x - u1.x * rr},${b.y - u1.y * rr} Q${b.x},${b.y} ${b.x + u2.x * rr},${b.y + u2.y * rr}`;
+		}
+
+		const last = p[p.length - 1];
+
+		return d + ` L${last.x},${last.y}`;
 	}
 
 	function shapeEl(shape, w, h, attrs, parent) {
@@ -478,7 +650,6 @@
 				this.drag = null;
 				this.render();
 			});
-			this.svg.addEventListener('dblclick', e => this.onDblClick(e));
 			this.svg.addEventListener('contextmenu', e => e.preventDefault());
 			this.svg.addEventListener('wheel', e => this.onWheel(e), {passive: false});
 		}
@@ -825,7 +996,10 @@
 		}
 
 		render() {
+			const d = this.drag;
+
 			this.root.classList.toggle('bm-editing', this.edit);
+			this.canvas.classList.toggle('bm-dragging', !!d && d.moved && (d.type === 'connect' || d.type === 'end'));
 			this.applyView();
 			this.renderLinks();
 			this.renderNodes();
@@ -887,10 +1061,14 @@
 				}
 
 				if (this.edit) {
-					for (const [cx, cy] of [[n.w / 2, 0], [n.w, n.h / 2], [n.w / 2, n.h], [0, n.h / 2]]) {
-						svgEl('circle', {class: 'bm-conn', cx, cy, r: 5 / this.view.k, 'data-role': 'conn',
-							'data-id': n.id}, g);
-					}
+					const extra = this.labelExtent(n);
+
+					nodePorts(n).forEach((port, i) => {
+						const p = portPoint(n, port, extra, 0);
+
+						svgEl('circle', {class: 'bm-conn', cx: p.x - n.x, cy: p.y - n.y, r: 4 / this.view.k,
+							'stroke-width': 1 / this.view.k, 'data-role': 'conn', 'data-id': n.id, 'data-port': i}, g);
+					});
 				}
 			}
 		}
@@ -969,18 +1147,18 @@
 				: (n.hostname || '');
 		}
 
-		linkGeometry(l, par) {
-			const a = this.node(l.from), b = this.node(l.to);
-
+		// a / b : nœuds d'extrémité (par défaut ceux du lien ; l'aperçu de connexion passe un nœud « curseur »).
+		linkGeometry(l, par, a = this.node(l.from), b = this.node(l.to)) {
 			if (!a || !b) {
 				return null;
 			}
 
 			const ca = center(a), cb = center(b);
+			const ea = this.labelExtent(a), eb = this.labelExtent(b);
 			let mids = l.points.map(p => ({x: p.x, y: p.y}));
 
-			// Liens parallèles sans point de passage : on les écarte automatiquement.
-			if (!mids.length && par.count > 1) {
+			// Liens parallèles sans point de passage ni point fixe : on les écarte automatiquement.
+			if (!mids.length && par.count > 1 && !l.fromPort && !l.toPort) {
 				const off = (par.index - (par.count - 1) / 2) * 34;
 
 				if (off) {
@@ -991,43 +1169,32 @@
 				}
 			}
 
-			let ctrl, line;
-			const elbows = [];
+			const fixedA = l.fromPort ? portPoint(a, l.fromPort, ea) : null;
+			const fixedB = l.toPort ? portPoint(b, l.toPort, eb) : null;
+			let line, ctrl, ortho = null;
 
 			if (l.style === 'orthogonal') {
-				const raw = [ca, ...mids, cb];
-
-				line = [raw[0]];
-
-				for (let i = 1; i < raw.length; i++) {
-					const p = line[line.length - 1], q = raw[i];
-
-					if (Math.abs(p.x - q.x) > 0.5 && Math.abs(p.y - q.y) > 0.5) {
-						const e = Math.abs(q.x - p.x) >= Math.abs(q.y - p.y) || i > 1 ? {x: q.x, y: p.y} : {x: p.x, y: q.y};
-
-						line.push(e);
-						elbows[i - 1] = e;
-					}
-
-					line.push(q);
-				}
-
-				line[0] = borderPoint(a, line[1], this.labelExtent(a));
-				line[line.length - 1] = borderPoint(b, line[line.length - 2], this.labelExtent(b));
+				ortho = this.orthoRoute(a, l.fromPort, ea, b, l.toPort, eb, mids);
+				line = ortho;
 				ctrl = [line[0], ...mids, line[line.length - 1]];
 			}
 			else {
 				ctrl = [
-					borderPoint(a, mids[0] || cb, this.labelExtent(a)),
+					fixedA || borderPoint(a, mids[0] || fixedB || cb, ea),
 					...mids,
-					borderPoint(b, mids[mids.length - 1] || ca, this.labelExtent(b))
+					fixedB || borderPoint(b, mids[mids.length - 1] || fixedA || ca, eb)
 				];
 				line = ctrl;
 			}
 
 			const n = line.length;
-			const startDir = unit(line[1].x - line[0].x, line[1].y - line[0].y);
-			const endDir = unit(line[n - 1].x - line[n - 2].x, line[n - 1].y - line[n - 2].y);
+			const curved = l.style === 'curve' && (n > 2 || fixedA || fixedB);
+			// Une courbe part perpendiculairement à un point fixe, comme dans draw.io.
+			const normA = curved && fixedA ? portNormal(a, l.fromPort) : null;
+			const normB = curved && fixedB ? portNormal(b, l.toPort) : null;
+			const startDir = normA || unit(line[1].x - line[0].x, line[1].y - line[0].y);
+			const endDir = normB ? {x: -normB.x, y: -normB.y}
+				: unit(line[n - 1].x - line[n - 2].x, line[n - 1].y - line[n - 2].y);
 			const startTip = line[0], endTip = line[n - 1];
 			const arrowSize = 5 + l.width * 2.2;
 			const drawn = line.slice();
@@ -1044,18 +1211,27 @@
 			const segs = [];
 			let d;
 
-			if (l.style === 'curve' && drawn.length > 2) {
+			if (curved) {
 				const p = drawn;
 
 				d = `M${p[0].x},${p[0].y}`;
 
 				for (let i = 0; i < p.length - 1; i++) {
 					const p0 = p[i - 1] || p[i], p1 = p[i], p2 = p[i + 1], p3 = p[i + 2] || p2;
+					const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
 					const s = {
 						p1, p2,
 						c1: {x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6},
 						c2: {x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6}
 					};
+
+					if (i === 0 && normA) {
+						s.c1 = {x: p1.x + normA.x * len / 2.5, y: p1.y + normA.y * len / 2.5};
+					}
+
+					if (i === p.length - 2 && normB) {
+						s.c2 = {x: p2.x + normB.x * len / 2.5, y: p2.y + normB.y * len / 2.5};
+					}
 
 					d += ` C${s.c1.x},${s.c1.y} ${s.c2.x},${s.c2.y} ${p2.x},${p2.y}`;
 					s.samples = Array.from({length: 13}, (_, k) => bezierAt(s, k / 12));
@@ -1064,20 +1240,94 @@
 				}
 			}
 			else {
-				d = 'M' + drawn.map(p => p.x + ',' + p.y).join(' L');
+				d = l.rounded && drawn.length > 2 ? polyPath(drawn, CORNER_RADIUS) : 'M' + drawn.map(p => p.x + ',' + p.y).join(' L');
 
-				for (let i = 0; i < ctrl.length - 1; i++) {
-					const p1 = ctrl[i], p2 = ctrl[i + 1], e = elbows[i];
+				// Orthogonal : un segment par tronçon de la polyligne. Droit : un segment entre deux points de passage.
+				const pts = ortho || ctrl;
 
-					segs.push({
-						p1, p2,
-						samples: e ? [p1, e, p2] : [p1, p2],
-						mid: e || {x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2}
-					});
+				for (let i = 0; i < pts.length - 1; i++) {
+					const p1 = pts[i], p2 = pts[i + 1];
+
+					segs.push({p1, p2, samples: [p1, p2], mid: {x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2}});
 				}
 			}
 
-			return {d, ctrl, segs, startTip, endTip, startDir, endDir, arrowSize};
+			return {d, ctrl, ortho, segs, startTip, endTip, startDir, endDir, arrowSize};
+		}
+
+		// Extrémité d'un lien orthogonal : point fixe, ou milieu du côté tourné vers la cible
+		// (glissé le long du côté pour rester aligné quand c'est possible).
+		orthoEnd(n, port, extra, t) {
+			if (port) {
+				return {p: portPoint(n, port, extra), d: axisDir(portNormal(n, port))};
+			}
+
+			const c = center(n), dx = t.x - c.x, dy = t.y - c.y, gap = 2;
+			const slide = !isEllipse(n) && n.w > 0;
+
+			if (Math.abs(dx) * n.h >= Math.abs(dy) * n.w) {
+				const s = dx >= 0 ? 1 : -1;
+				const y = slide && t.y > n.y + 4 && t.y < n.y + n.h - 4 ? t.y : c.y;
+
+				return {p: {x: s > 0 ? n.x + n.w + gap : n.x - gap, y}, d: {x: s, y: 0}};
+			}
+
+			const s = dy >= 0 ? 1 : -1;
+			const x = slide && t.x > n.x + 4 && t.x < n.x + n.w - 4 ? t.x : c.x;
+
+			return {p: {x, y: s > 0 ? n.y + n.h + extra + gap : n.y - gap}, d: {x: 0, y: s}};
+		}
+
+		// Tracé orthogonal : départs perpendiculaires, passage par les points (coins) du lien,
+		// sinon itinéraire automatique en L, en Z ou en U.
+		orthoRoute(a, portA, ea, b, portB, eb, mids) {
+			const ca = center(a), cb = center(b);
+			let ta = mids[0] || (portB ? portPoint(b, portB, eb) : cb);
+			let tb = mids[mids.length - 1] || (portA ? portPoint(a, portA, ea) : ca);
+
+			if (!mids.length && !portA && !portB) {
+				// Nœuds face à face : une ligne droite au milieu de la partie commune.
+				const y1 = Math.max(a.y, b.y), y2 = Math.min(a.y + a.h, b.y + b.h);
+				const x1 = Math.max(a.x, b.x), x2 = Math.min(a.x + a.w, b.x + b.w);
+
+				if (y2 - y1 > 8 && x2 <= x1) {
+					ta = {x: cb.x, y: (y1 + y2) / 2};
+					tb = {x: ca.x, y: (y1 + y2) / 2};
+				}
+				else if (x2 - x1 > 8 && y2 <= y1) {
+					ta = {x: (x1 + x2) / 2, y: cb.y};
+					tb = {x: (x1 + x2) / 2, y: ca.y};
+				}
+			}
+
+			const A = this.orthoEnd(a, portA, ea, ta), B = this.orthoEnd(b, portB, eb, tb);
+			const S = A.p, E = B.p, dS = A.d, dE = B.d;
+			const S1 = {x: S.x + dS.x * ORTHO_STUB, y: S.y + dS.y * ORTHO_STUB};
+			const E1 = {x: E.x + dE.x * ORTHO_STUB, y: E.y + dE.y * ORTHO_STUB};
+			const P = [S, S1];
+			const step = (q, last) => {
+				const p = P[P.length - 1], o = P[P.length - 2];
+
+				if (Math.abs(p.x - q.x) > 0.5 && Math.abs(p.y - q.y) > 0.5) {
+					// On tourne au point courant ; le dernier tronçon arrive perpendiculairement au nœud.
+					const horiz = Math.abs(p.y - o.y) < 0.5;
+
+					P.push(last
+						? (dE.x ? {x: q.x, y: p.y} : {x: p.x, y: q.y})
+						: (horiz ? {x: p.x, y: q.y} : {x: q.x, y: p.y}));
+				}
+
+				P.push(q);
+			};
+
+			for (const q of mids.length ? mids : orthoAuto(S1, dS, E1, dE)) {
+				step(q, false);
+			}
+
+			step(E1, true);
+			P.push(E);
+
+			return simplifyOrtho(P);
 		}
 
 		labelExtent(n) {
@@ -1127,8 +1377,10 @@
 
 				const sev = this.linkSeverity(l);
 				const color = sev >= 0 ? SEVERITIES[sev].color : l.color;
+				const ghost = this.drag && this.drag.moved && this.drag.type === 'end' && this.drag.link === l.id;
 				const g = svgEl('g', {
-					class: 'bm-link' + (this.sel.links.has(l.id) ? ' bm-selected' : '') + (sev >= 0 ? ' bm-link-problem' : ''),
+					class: 'bm-link' + (this.sel.links.has(l.id) ? ' bm-selected' : '') + (sev >= 0 ? ' bm-link-problem' : '')
+						+ (ghost ? ' bm-ghost' : ''),
 					'data-role': 'link',
 					'data-id': l.id
 				}, this.gLinks);
@@ -1154,9 +1406,10 @@
 
 				if (l.label) {
 					const len = path.getTotalLength();
-					const mid = len ? path.getPointAtLength(len / 2) : geom.startTip;
-					const bg = svgEl('rect', {class: 'bm-link-label-bg', rx: 3}, g);
-					const t = drawText(g, l.label, mid.x, mid.y, {size: l.fontSize, valign: 'middle', cls: 'bm-label bm-link-label'});
+					const mid = len ? path.getPointAtLength(len * l.labelPos) : geom.startTip;
+					const lg = svgEl('g', {class: 'bm-link-label-g', 'data-role': 'label', 'data-id': l.id}, g);
+					const bg = svgEl('rect', {class: 'bm-link-label-bg', rx: 3}, lg);
+					const t = drawText(lg, l.label, mid.x, mid.y, {size: l.fontSize, valign: 'middle', cls: 'bm-label bm-link-label'});
 					const bb = t.getBBox();
 
 					bg.setAttribute('x', bb.x - 4);
@@ -1215,7 +1468,18 @@
 			if (links.length === 1 && !nodes.length) {
 				const l = links[0], geom = this.geom[l.id];
 
-				if (geom) {
+				if (geom && geom.ortho) {
+					// Orthogonal : une poignée par segment intérieur, à glisser perpendiculairement (comme draw.io).
+					for (let i = 1; i < geom.segs.length - 1; i++) {
+						const s = geom.segs[i], horiz = Math.abs(s.p1.y - s.p2.y) < 0.5;
+						const w = (horiz ? 16 : 7) / k, h = (horiz ? 7 : 16) / k;
+
+						svgEl('rect', {class: 'bm-handle bm-oseg ' + (horiz ? 'bm-oseg-h' : 'bm-oseg-v'), 'data-role': 'oseg',
+							'data-index': i, x: s.mid.x - w / 2, y: s.mid.y - h / 2, width: w, height: h, rx: 3 / k,
+							'stroke-width': 1.5 / k}, o);
+					}
+				}
+				else if (geom) {
 					geom.segs.forEach((s, i) => {
 						svgEl('circle', {class: 'bm-handle bm-vwp', 'data-role': 'vwp', 'data-index': i, cx: s.mid.x, cy: s.mid.y,
 							r: 4.5 / k, 'stroke-width': 1.5 / k}, o);
@@ -1224,10 +1488,12 @@
 						svgEl('circle', {class: 'bm-handle bm-wp', 'data-role': 'wp', 'data-index': i, cx: p.x, cy: p.y,
 							r: 5.5 / k, 'stroke-width': 1.5 / k}, o);
 					});
+				}
 
-					for (const [end, p] of [['from', geom.ctrl[0]], ['to', geom.ctrl[geom.ctrl.length - 1]]]) {
-						svgEl('circle', {class: 'bm-handle bm-end', 'data-role': 'end', 'data-end': end, cx: p.x, cy: p.y,
-							r: 5.5 / k, 'stroke-width': 1.5 / k}, o);
+				if (geom) {
+					for (const [end, p] of [['from', geom.startTip], ['to', geom.endTip]]) {
+						svgEl('circle', {class: 'bm-handle bm-end' + (l[end + 'Port'] ? ' bm-end-fixed' : ''), 'data-role': 'end',
+							'data-end': end, cx: p.x, cy: p.y, r: 5.5 / k, 'stroke-width': 1.5 / k}, o);
 					}
 				}
 			}
@@ -1241,30 +1507,63 @@
 			}
 
 			if (d && d.moved && (d.type === 'connect' || d.type === 'end')) {
-				let from;
+				this.renderConnectPreview(d);
+			}
+		}
 
-				if (d.type === 'connect') {
-					from = center(this.node(d.from));
-				}
-				else {
-					const l = this.link(d.link);
-					const other = this.node(d.end === 'from' ? l.to : l.from);
+		// Aperçu du lien en cours de création ou de reconnexion, avec les points de connexion de la cible.
+		renderConnectPreview(d) {
+			const o = this.gOverlay, k = this.view.k;
+			const target = d.hover ? this.node(d.hover) : null;
+			let free = {id: '', type: 'text', x: d.cur.x, y: d.cur.y, w: 0, h: 0, label: ''};
 
-					from = center(other);
-				}
+			if (target) {
+				const extra = this.labelExtent(target);
 
-				const target = d.hover ? this.node(d.hover) : null;
+				nodePorts(target).forEach(port => {
+					const p = portPoint(target, port, extra, 0);
+					const hot = samePort(port, d.hoverPort);
 
-				if (target) {
+					svgEl('circle', {class: 'bm-port' + (hot ? ' bm-port-hot' : ''), cx: p.x, cy: p.y, r: (hot ? 6 : 3.5) / k,
+						'stroke-width': 1.5 / k}, o);
+				});
+
+				if (!d.hoverPort) {
 					const pad = 4 / k;
 
 					svgEl('rect', {class: 'bm-drop', x: target.x - pad, y: target.y - pad, width: target.w + pad * 2,
 						height: target.h + pad * 2, 'stroke-width': 2 / k}, o);
 				}
+			}
+			else if (d.type === 'connect' && !d.overSource) {
+				// Relâcher dans le vide crée un nœud identique à la source, déjà relié.
+				const src = this.node(d.from);
 
-				const to = target ? center(target) : d.cur;
+				free = Object.assign({}, src, {x: d.cur.x - src.w / 2, y: d.cur.y - src.h / 2, label: '', hostid: ''});
+				svgEl('rect', {class: 'bm-drop bm-drop-new', x: free.x, y: free.y, width: free.w, height: free.h,
+					'stroke-width': 1.5 / k}, o);
+			}
 
-				svgEl('path', {class: 'bm-temp-link', d: `M${from.x},${from.y} L${to.x},${to.y}`, 'stroke-width': 2 / k}, o);
+			let fake, a, b;
+
+			if (d.type === 'connect') {
+				fake = Object.assign({}, LINK_DEFAULTS, {from: d.from, fromPort: d.fromPort, toPort: target ? d.hoverPort : null,
+					style: this.doc.settings.linkStyle, points: []});
+				a = this.node(d.from);
+				b = target || free;
+			}
+			else {
+				const l = this.link(d.link);
+
+				fake = Object.assign({}, l, {[d.end + 'Port']: target ? d.hoverPort : null});
+				a = d.end === 'from' ? target || free : this.node(l.from);
+				b = d.end === 'to' ? target || free : this.node(l.to);
+			}
+
+			const geom = this.linkGeometry(fake, {index: 0, count: 1}, a, b);
+
+			if (geom) {
+				svgEl('path', {class: 'bm-temp-link', d: geom.d, 'stroke-width': Math.max(fake.width, 2 / k)}, o);
 			}
 		}
 
@@ -1363,12 +1662,45 @@
 			for (let i = order.length - 1; i >= 0; i--) {
 				const n = order[i];
 
-				if (p.x >= n.x - 4 && p.x <= n.x + n.w + 4 && p.y >= n.y - 4 && p.y <= n.y + n.h + 4) {
+				if (p.x >= n.x - 4 && p.x <= n.x + n.w + 4 && p.y >= n.y - 4 && p.y <= n.y + n.h + this.labelExtent(n) + 4) {
 					return n;
 				}
 			}
 
 			return null;
+		}
+
+		// Cible d'un lien sous le curseur : point de connexion le plus proche (aimanté), sinon le nœud
+		// entier (extrémité flottante).
+		targetAt(p, exclude) {
+			const tol = 12 / this.view.k;
+			let best = null, bestD = tol;
+
+			for (const n of this.doc.nodes) {
+				if (n.id === exclude) {
+					continue;
+				}
+
+				const extra = this.labelExtent(n);
+
+				for (const port of nodePorts(n)) {
+					const q = portPoint(n, port, extra, 0);
+					const dist = Math.hypot(q.x - p.x, q.y - p.y);
+
+					if (dist < bestD) {
+						bestD = dist;
+						best = {node: n, port};
+					}
+				}
+			}
+
+			if (best) {
+				return best;
+			}
+
+			const n = this.nodeAt(p);
+
+			return n && n.id !== exclude ? {node: n, port: null} : null;
 		}
 
 		bandRect() {
@@ -1394,6 +1726,20 @@
 			const t = e.target.closest('[data-role]');
 			const role = t ? t.dataset.role : null;
 			const d = {sx: e.clientX, sy: e.clientY, start: w, cur: w, moved: false, vx: this.view.x, vy: this.view.y};
+
+			// Double-clic détecté ici : le rendu remplace l'élément cliqué, le navigateur n'émettrait pas de dblclick.
+			const now = Date.now(), last = this.lastDown;
+
+			this.lastDown = {time: now, x: e.clientX, y: e.clientY};
+
+			if (this.edit && t && e.button === 0 && last && now - last.time < 400
+					&& Math.hypot(e.clientX - last.x, e.clientY - last.y) < 6) {
+				this.lastDown = null;
+				e.preventDefault();
+				this.onDblClick(t);
+
+				return;
+			}
 
 			this.svg.setPointerCapture(e.pointerId);
 			this.drag = d;
@@ -1427,6 +1773,23 @@
 			else if (role === 'conn') {
 				d.type = 'connect';
 				d.from = t.dataset.id;
+				d.fromPort = nodePorts(this.node(d.from))[+t.dataset.port] || null;
+			}
+			else if (role === 'oseg') {
+				d.type = 'bend';
+				d.link = this.selectedLinks()[0].id;
+				d.seg = +t.dataset.index;
+			}
+			else if (role === 'label') {
+				const id = t.dataset.id;
+
+				if (!this.sel.links.has(id) || this.sel.nodes.size || this.sel.links.size > 1) {
+					this.clearSelection();
+					this.sel.links.add(id);
+				}
+
+				d.type = 'label';
+				d.link = id;
 			}
 			else if (role === 'resize') {
 				const n = this.selectedNodes()[0];
@@ -1502,6 +1865,8 @@
 			const first = !d.moved;
 
 			d.moved = true;
+			// Un glisser ne compte pas comme premier clic d'un double-clic.
+			this.lastDown = null;
 			d.cur = w;
 
 			if (d.type === 'click') {
@@ -1525,14 +1890,47 @@
 
 				case 'connect':
 				case 'end': {
-					const n = this.nodeAt(w);
 					const exclude = d.type === 'connect' ? d.from
 						: (d.end === 'from' ? this.link(d.link).to : this.link(d.link).from);
+					const target = this.targetAt(w, exclude);
+					const under = this.nodeAt(w);
 
-					d.hover = n && n.id !== exclude ? n.id : null;
-					this.renderOverlay();
+					d.hover = target ? target.node.id : null;
+					d.hoverPort = target ? target.port : null;
+					d.overSource = !!under && under.id === exclude;
+
+					// Au premier mouvement, rendu complet pour estomper le lien en cours de reconnexion.
+					first ? this.render() : this.renderOverlay();
 
 					return;
+				}
+
+				case 'label': {
+					const path = this.gLinks.querySelector(`g[data-id="${d.link}"] .bm-link-line`);
+
+					if (!path) {
+						return;
+					}
+
+					if (first) {
+						this.checkpoint();
+					}
+
+					const len = path.getTotalLength();
+					let best = 0.5, bestD = Infinity;
+
+					for (let i = 0; i <= 100; i++) {
+						const q = path.getPointAtLength(len * i / 100);
+						const dist = Math.hypot(q.x - w.x, q.y - w.y);
+
+						if (dist < bestD) {
+							bestD = dist;
+							best = i / 100;
+						}
+					}
+
+					this.link(d.link).labelPos = best;
+					break;
 				}
 
 				case 'move': {
@@ -1581,32 +1979,106 @@
 
 					this.checkpoint();
 
-					const index = d.type === 'vwp' ? d.index : this.segmentIndex(geom, d.start);
-
-					l.points.splice(Math.min(index, l.points.length), 0, this.snapPt(w));
-					d.type = 'wp';
-					d.index = Math.min(index, l.points.length - 1);
-
 					if (!this.sel.links.has(l.id) || this.sel.links.size > 1 || this.sel.nodes.size) {
 						this.clearSelection();
 						this.sel.links.add(l.id);
 						this.renderPanel();
 					}
 
+					if (geom.ortho) {
+						const P = geom.ortho;
+						const i = d.seg ?? this.segmentIndex(geom, d.start);
+
+						if (i >= 1 && i <= P.length - 3) {
+							// Segment intérieur : il glisse parallèlement à lui-même, les coins deviennent les points du lien.
+							l.points = P.slice(1, -1).map(p => ({x: p.x, y: p.y}));
+							d.type = 'oseg';
+							d.index = i;
+							d.horiz = Math.abs(P[i].y - P[i + 1].y) < 0.5;
+							this.moveOrthoSegment(l, d, w);
+						}
+						else {
+							// Segment relié à un nœud : on ajoute un coin du côté de ce nœud.
+							l.points.splice(i === 0 ? 0 : l.points.length, 0, this.snapPt(w));
+							d.type = 'wp';
+							d.index = i === 0 ? 0 : l.points.length - 1;
+						}
+
+						break;
+					}
+
+					const index = d.type === 'vwp' ? d.index : this.segmentIndex(geom, d.start);
+
+					l.points.splice(Math.min(index, l.points.length), 0, this.snapPt(w));
+					d.type = 'wp';
+					d.index = Math.min(index, l.points.length - 1);
 					break;
 				}
+
+				case 'oseg':
+					this.moveOrthoSegment(this.link(d.link), d, w);
+					break;
 
 				case 'wp': {
 					if (first) {
 						this.checkpoint();
 					}
 
-					this.link(d.link).points[d.index] = this.snapPt(w);
+					const l = this.link(d.link);
+
+					l.points[d.index] = this.alignPoint(l, d.index, this.snapPt(w));
 					break;
 				}
 			}
 
 			this.render();
+		}
+
+		moveOrthoSegment(l, d, w) {
+			const key = d.horiz ? 'y' : 'x';
+			const v = this.snap(w[key]);
+
+			l.points[d.index - 1][key] = v;
+			l.points[d.index][key] = v;
+		}
+
+		// Aimante un point de passage sur l'alignement de ses voisins (ligne bien droite).
+		alignPoint(l, i, p) {
+			const tol = 8 / this.view.k;
+			const anchor = (id, port) => {
+				const n = this.node(id);
+
+				return port ? portPoint(n, port, this.labelExtent(n)) : center(n);
+			};
+			const prev = i > 0 ? l.points[i - 1] : anchor(l.from, l.fromPort);
+			const next = i < l.points.length - 1 ? l.points[i + 1] : anchor(l.to, l.toPort);
+
+			for (const nb of [prev, next]) {
+				if (Math.abs(p.x - nb.x) < tol) {
+					p.x = nb.x;
+				}
+
+				if (Math.abs(p.y - nb.y) < tol) {
+					p.y = nb.y;
+				}
+			}
+
+			return p;
+		}
+
+		// Nœud créé en relâchant un nouveau lien dans le vide : copie de l'apparence de la source.
+		addLinkedNode(src, p) {
+			const n = Object.assign({}, src, {id: uid()});
+
+			if (n.type === 'host') {
+				Object.assign(n, {hostid: '', hostname: '', label: ''});
+			}
+
+			n.x = this.snap(p.x - n.w / 2);
+			n.y = this.snap(p.y - n.h / 2);
+			n.type === 'shape' ? this.doc.nodes.unshift(n) : this.doc.nodes.push(n);
+
+			return n;
 		}
 
 		applyBand(additive) {
@@ -1659,26 +2131,67 @@
 					return;
 				}
 
-				case 'connect':
-					if (d.moved && d.hover) {
-						this.checkpoint();
-
-						const l = Object.assign({id: uid()}, LINK_DEFAULTS, {
-							from: d.from, to: d.hover, points: [], style: this.doc.settings.linkStyle
-						});
-
-						this.doc.links.push(l);
-						this.clearSelection();
-						this.sel.links.add(l.id);
+				case 'connect': {
+					if (!d.moved || (!d.hover && d.overSource)) {
+						break;
 					}
+
+					this.checkpoint();
+
+					const target = d.hover ? null : this.addLinkedNode(this.node(d.from), d.cur);
+					const l = Object.assign({id: uid()}, LINK_DEFAULTS, {
+						from: d.from, to: d.hover || target.id, fromPort: d.fromPort, toPort: d.hover ? d.hoverPort : null,
+						points: [], style: this.doc.settings.linkStyle
+					});
+
+					this.doc.links.push(l);
+					this.clearSelection();
+
+					if (target) {
+						// Comme dans draw.io : le nouveau nœud est sélectionné, prêt à être configuré.
+						this.sel.nodes.add(target.id);
+						this.render();
+						this.renderPanel();
+
+						const input = this.panel.querySelector('.bm-hostpicker input');
+
+						input && input.focus();
+
+						return;
+					}
+
+					this.sel.links.add(l.id);
 					break;
+				}
 
 				case 'end':
 					if (d.moved && d.hover) {
+						const l = this.link(d.link);
+
 						this.checkpoint();
-						this.link(d.link)[d.end] = d.hover;
+						l[d.end] = d.hover;
+						l[d.end + 'Port'] = d.hoverPort;
+
+						// Les coins d'un lien orthogonal ne correspondent plus : retour au tracé automatique.
+						if (l.style === 'orthogonal') {
+							l.points = [];
+						}
 					}
 					break;
+
+				case 'oseg': {
+					// Nettoyage : on ne garde que les vrais coins du tracé.
+					const l = this.link(d.link);
+
+					this.renderLinks();
+
+					const geom = this.geom[l.id];
+
+					if (geom && geom.ortho) {
+						l.points = geom.ortho.slice(1, -1).map(p => ({x: p.x, y: p.y}));
+					}
+					break;
+				}
 			}
 
 			this.render();
@@ -1688,17 +2201,8 @@
 			}
 		}
 
-		onDblClick(e) {
-			if (!this.edit) {
-				return;
-			}
-
-			const t = e.target.closest('[data-role]');
-
-			if (!t) {
-				return;
-			}
-
+		// t : élément [data-role] double-cliqué.
+		onDblClick(t) {
 			if (t.dataset.role === 'wp') {
 				const l = this.selectedLinks()[0];
 
@@ -1708,12 +2212,16 @@
 					this.render();
 				}
 			}
-			else if (t.dataset.role === 'node') {
+			else if (['node', 'link', 'label', 'oseg'].includes(t.dataset.role)) {
+				// Double-clic sur un nœud ou un lien : édition du libellé.
 				const field = this.panel.querySelector('[data-focus]');
 
+				// Après le mousedown, qui sinon redonne le focus au canevas.
 				if (field) {
-					field.focus();
-					field.select && field.select();
+					setTimeout(() => {
+						field.focus();
+						field.select && field.select();
+					});
 				}
 			}
 		}
@@ -2426,8 +2934,38 @@
 
 			s1.append(htmlEl('div', {class: 'bm-link-ends', text: this.nodeLabel(a) + '  →  ' + this.nodeLabel(b)}));
 
-			this.row(s1, 'Tracé', this.selectField(l, 'style', {curve: 'Courbe', straight: 'Droit', orthogonal: 'Orthogonal'}));
+			this.row(s1, 'Tracé', this.selectField(l, 'style', {curve: 'Courbe', straight: 'Droit', orthogonal: 'Orthogonal'},
+				{panel: true}));
+
+			if (l.style !== 'curve') {
+				this.row(s1, 'Coins arrondis', this.checkField(l, 'rounded'));
+			}
+
 			this.row(s1, 'Libellé', this.textField(l, 'label', {multiline: true, focus: true, placeholder: 'ex : 10 Gb/s'}));
+
+			const ends = this.section('Extrémités');
+			const endRow = (label, key) => {
+				const fixed = !!l[key];
+
+				// div plutôt que label : un clic sur l'intitulé ne doit pas déclencher le bouton.
+				ends.append(htmlEl('div', {class: 'bm-row'}, [htmlEl('span', {class: 'bm-row-label', text: label}),
+					htmlEl('span', {class: 'bm-inline'}, [
+					htmlEl('span', {class: 'bm-end-state', text: fixed ? 'point fixe' : 'flottante'}),
+					fixed ? htmlEl('button', {type: 'button', class: 'btn-alt bm-mini-btn', text: 'Libérer',
+						title: 'L\'extrémité suivra le côté le plus proche du nœud',
+						onclick: () => {
+							this.checkpoint();
+							l[key] = null;
+							this.render();
+							this.renderPanel();
+						}}) : null
+				])]));
+			};
+
+			endRow('Départ', 'fromPort');
+			endRow('Arrivée', 'toPort');
+			ends.append(htmlEl('div', {class: 'bm-hint', text: 'Déposez une extrémité sur un point bleu pour la fixer, '
+				+ 'ou au milieu du nœud pour qu\'elle reste flottante.'}));
 
 			const s2 = this.section('Apparence');
 
@@ -2458,14 +2996,19 @@
 				['Inverser', () => {
 					this.checkpoint();
 					[l.from, l.to] = [l.to, l.from];
+					[l.fromPort, l.toPort] = [l.toPort, l.fromPort];
 					l.points.reverse();
+					l.labelPos = 1 - l.labelPos;
 					this.render();
 					this.renderPanel();
 				}, '', 'Inverser le sens du lien'],
 				['Supprimer', () => this.deleteSelection(), 'bm-danger']
 			]);
-			s4.append(htmlEl('div', {class: 'bm-hint', text: 'Glissez le lien pour le courber. Double-clic sur un point pour '
-				+ 'le retirer. Glissez une extrémité vers un autre nœud pour la reconnecter.'}));
+			s4.append(htmlEl('div', {class: 'bm-hint', text: l.style === 'orthogonal'
+				? 'Glissez une poignée de segment pour le décaler. « Redresser » relance le tracé automatique. '
+					+ 'Le libellé se déplace le long du lien.'
+				: 'Glissez le lien pour le courber. Double-clic sur un point pour le retirer. Le libellé se déplace '
+					+ 'le long du lien.'}));
 		}
 
 		panelMulti(nodes, links) {
@@ -2588,8 +3131,10 @@
 			const s4 = this.section('Aide');
 
 			s4.append(htmlEl('ul', {class: 'bm-help'}, [
-				'Survolez un nœud et tirez depuis un de ses points bleus vers un autre nœud pour créer un lien.',
+				'Survolez un nœud et tirez depuis un de ses points bleus : sur un point bleu d\'un autre nœud, le lien y est '
+					+ 'fixé ; au milieu du nœud, il reste flottant ; dans le vide, un nouveau nœud est créé.',
 				'Glissez un lien pour le courber ; chaque point ajouté peut être déplacé, double-clic pour le retirer.',
+				'Liens orthogonaux : tracé automatique, glissez les poignées de segment pour le modifier.',
 				'Glissez dans le vide pour sélectionner plusieurs éléments (Maj pour ajouter).',
 				'Molette : zoom · Espace + glisser ou clic droit : déplacer la vue.',
 				'Ctrl+Z / Ctrl+Y · Ctrl+C / Ctrl+V · Ctrl+D · Suppr · flèches · Ctrl+S'

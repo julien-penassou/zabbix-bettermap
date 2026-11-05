@@ -3,7 +3,8 @@
 Ce module frontend ajoute **Surveillance › Cartes+**, un éditeur de cartes indépendant des cartes natives de Zabbix :
 
 - liens **courbes**, droits ou orthogonaux, qu'on plie en les attrapant à la souris ;
-- points de passage déplaçables, extrémités reconnectables d'un nœud à un autre ;
+- gestion des liens inspirée de draw.io : points de connexion fixes ou extrémités flottantes, routage orthogonal automatique à segments déplaçables, coins arrondis, aperçu en direct pendant le tracé ;
+- points de passage déplaçables (aimantés sur l'alignement de leurs voisins), extrémités reconnectables d'un nœud à un autre, libellé déplaçable le long du lien ;
 - liens parallèles (LACP, redondance) écartés automatiquement ;
 - hôtes Zabbix avec icônes vectorielles, pastille de statut et halo pulsant pour les problèmes Haut et Désastre ;
 - liens colorés selon la sévérité des problèmes de leurs extrémités ;
@@ -43,11 +44,17 @@ Au premier affichage, le module crée une table `bettermaps_map` dans la base Za
 
 | Geste | Effet |
 |---|---|
-| Survoler un nœud, tirer depuis un point bleu vers un autre nœud | créer un lien |
-| Tirer un lien | le courber (ajoute un point de passage) |
+| Survoler un nœud, tirer depuis un point bleu… | créer un lien, fixé à ce point |
+| … et relâcher sur un point bleu d'un autre nœud | extrémité fixe (le point s'aimante à l'approche) |
+| … et relâcher au milieu d'un nœud | extrémité flottante (suit le côté le plus proche) |
+| … et relâcher dans le vide | crée un nouveau nœud de même apparence, déjà relié |
+| Tirer un lien courbe ou droit | le courber (ajoute un point de passage) |
 | Tirer un point plein / un point creux | déplacer / ajouter un point de passage |
+| Tirer la poignée d'un segment orthogonal | décaler ce segment parallèlement à lui-même |
+| Tirer le libellé d'un lien | le déplacer le long du lien |
 | Double-clic sur un point | le supprimer |
-| Tirer une extrémité d'un lien sélectionné | le reconnecter à un autre nœud |
+| Double-clic sur un lien ou un nœud | modifier son libellé |
+| Tirer une extrémité d'un lien sélectionné | la reconnecter (point fixe ou flottante) |
 | Glisser dans le vide (Maj pour ajouter) | sélection rectangulaire |
 | Molette | zoom |
 | Espace + glisser, ou clic droit + glisser | déplacer la vue |

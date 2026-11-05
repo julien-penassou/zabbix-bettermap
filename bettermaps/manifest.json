@@ -3,7 +3,7 @@
 	"id": "bettermaps",
 	"type": "widget",
 	"name": "Better Maps",
-	"version": "1.1",
+	"version": "1.2",
 	"namespace": "BetterMaps",
 	"author": "Julien Penassou",
 	"description": "Cartes réseau façon draw.io (Surveillance › Cartes+) et widget « Carte+ » pour les tableaux de bord.",

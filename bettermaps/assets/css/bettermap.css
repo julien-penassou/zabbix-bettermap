@@ -291,9 +291,8 @@ html[color-scheme="dark"] .bm-root {
 /* points de connexion (édition) */
 
 .bm-conn {
-	fill: var(--bm-accent);
-	stroke: #fff;
-	stroke-width: 1;
+	fill: #fff;
+	stroke: var(--bm-accent);
 	opacity: 0;
 	cursor: crosshair;
 	transition: opacity .12s;
@@ -305,6 +304,23 @@ html[color-scheme="dark"] .bm-root {
 
 .bm-editing .bm-conn:hover {
 	opacity: 1;
+	fill: var(--bm-accent);
+}
+
+/* pendant un glisser, les points de connexion ne réagissent plus au survol */
+.bm-canvas.bm-dragging .bm-conn {
+	display: none;
+}
+
+.bm-port {
+	fill: #fff;
+	stroke: var(--bm-accent);
+	pointer-events: none;
+}
+
+.bm-port-hot {
+	fill: var(--bm-accent);
+	stroke: #fff;
 }
 
 /* liens */
@@ -337,10 +353,17 @@ html[color-scheme="dark"] .bm-root {
 	fill: var(--bm-link);
 }
 
+.bm-link.bm-ghost {
+	opacity: .25;
+}
+
 .bm-link-label-bg {
 	fill: var(--bm-bg);
 	opacity: .92;
-	pointer-events: none;
+}
+
+.bm-editing .bm-link-label-g {
+	cursor: grab;
 }
 
 .bm-link-label {
@@ -384,6 +407,38 @@ html[color-scheme="dark"] .bm-root {
 .bm-end {
 	fill: #fff;
 	cursor: crosshair;
+}
+
+.bm-end-fixed {
+	fill: var(--bm-accent);
+	stroke: #fff;
+}
+
+.bm-oseg {
+	fill: #fff;
+	opacity: .9;
+}
+
+.bm-oseg-h {
+	cursor: ns-resize;
+}
+
+.bm-oseg-v {
+	cursor: ew-resize;
+}
+
+.bm-drop-new {
+	stroke-dasharray: 5 4;
+}
+
+.bm-end-state {
+	color: var(--bm-muted);
+}
+
+.bm-mini-btn {
+	padding: 0 8px !important;
+	height: 22px;
+	line-height: 20px;
 }
 
 .bm-band {
