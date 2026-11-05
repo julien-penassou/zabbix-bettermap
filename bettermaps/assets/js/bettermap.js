@@ -62,9 +62,43 @@
 		trigger: {w: 180, h: 54, label: '', hostid: '', hostname: '', triggerid: '', triggername: '', shape: 'round',
 			fill: '', stroke: '', color: '', fontSize: 13, url: ''},
 		shape: {w: 200, h: 120, label: 'Zone', shape: 'round', fill: '', stroke: '', color: '', fontSize: 13, url: '',
-			valign: 'topleft'},
-		text: {w: 120, h: 30, label: 'Texte', fill: '', stroke: '', color: '', fontSize: 14, url: ''}
+			font: '', bold: true, italic: false, underline: false, align: 'left', valign: 'top'},
+		text: {w: 120, h: 30, label: 'Texte', fill: '', stroke: '', color: '', fontSize: 14, url: '',
+			font: '', bold: false, italic: false, underline: false, align: 'center', valign: 'middle'}
 	};
+
+	// Polices proposées pour les textes et les zones ('' : police de l'interface Zabbix).
+	const FONTS = {
+		'': {name: 'Par défaut', css: ''},
+		arial: {name: 'Arial', css: 'Arial, Helvetica, sans-serif'},
+		verdana: {name: 'Verdana', css: 'Verdana, Geneva, sans-serif'},
+		tahoma: {name: 'Tahoma', css: 'Tahoma, Geneva, sans-serif'},
+		trebuchet: {name: 'Trebuchet MS', css: '"Trebuchet MS", Helvetica, sans-serif'},
+		system: {name: 'Système', css: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'},
+		georgia: {name: 'Georgia', css: 'Georgia, serif'},
+		times: {name: 'Times New Roman', css: '"Times New Roman", Times, serif'},
+		courier: {name: 'Courier New', css: '"Courier New", Courier, monospace'},
+		impact: {name: 'Impact', css: 'Impact, "Arial Black", sans-serif'}
+	};
+
+	// Icônes 16×16 des boutons d'alignement du panneau.
+	const ALIGN_ICONS = Object.fromEntries(Object.entries({
+		left: '<path d="M2 3h12M2 6.5h8M2 10h12M2 13.5h8"/>',
+		center: '<path d="M2 3h12M4 6.5h8M2 10h12M4 13.5h8"/>',
+		right: '<path d="M2 3h12M6 6.5h8M2 10h12M6 13.5h8"/>',
+		top: '<rect x="1.5" y="1.5" width="13" height="13" rx="1.5" opacity=".45"/><path d="M4.5 4.5h7M4.5 7h7"/>',
+		middle: '<rect x="1.5" y="1.5" width="13" height="13" rx="1.5" opacity=".45"/><path d="M4.5 6.75h7M4.5 9.25h7"/>',
+		bottom: '<rect x="1.5" y="1.5" width="13" height="13" rx="1.5" opacity=".45"/><path d="M4.5 9h7M4.5 11.5h7"/>'
+	}).map(([k, d]) => [k, '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" '
+		+ 'stroke-width="1.5" stroke-linecap="round">' + d + '</svg>']));
+
+	const H_ALIGNS = ['left', 'center', 'right'];
+	const V_ALIGNS = ['top', 'middle', 'bottom'];
+
+	// Nœuds dont le libellé se met en forme (police, style, alignement dans la boîte).
+	function hasTextStyle(n) {
+		return n.type === 'text' || n.type === 'shape';
+	}
 
 	// Nœuds liés à un objet Zabbix : champ identifiant, champ du nom mémorisé, clés du statut renvoyé par le serveur.
 	const OBJECT_TYPES = {
@@ -271,6 +305,25 @@
 			node.h = Math.max(8, num(node.h, defs.h));
 			node.fontSize = clamp(num(node.fontSize, defs.fontSize), 6, 96);
 			node.label = String(node.label ?? '');
+
+			if (hasTextStyle(node)) {
+				// Anciennes zones : valign valait topleft / top / middle / bottom, sans alignement horizontal.
+				if (type === 'shape' && !('align' in n)) {
+					node.align = n.valign === undefined || n.valign === 'topleft' ? 'left' : 'center';
+				}
+
+				if (node.valign === 'topleft') {
+					node.valign = 'top';
+				}
+
+				node.align = H_ALIGNS.includes(node.align) ? node.align : defs.align;
+				node.valign = V_ALIGNS.includes(node.valign) ? node.valign : defs.valign;
+				node.font = FONTS[node.font] ? node.font : '';
+				node.bold = !!node.bold;
+				node.italic = !!node.italic;
+				node.underline = !!node.underline;
+			}
+
 			doc.nodes.push(node);
 		}
 
@@ -525,10 +578,20 @@
 		const baseline = opts.valign === 'middle' ? 'central' : 'hanging';
 		const t = svgEl('text', {x, y, 'font-size': fs, 'text-anchor': opts.anchor || 'middle', class: opts.cls || 'bm-label'},
 			parent);
-		const y0 = opts.valign === 'middle' ? y - (lines.length - 1) * lh / 2 : y;
+		const y0 = opts.valign === 'middle' ? y - (lines.length - 1) * lh / 2
+			: opts.valign === 'bottom' ? y - lines.length * lh : y;
 
 		if (opts.color) {
 			t.style.fill = opts.color;
+		}
+
+		if (opts.style) {
+			const st = opts.style;
+
+			t.style.fontFamily = FONTS[st.font] ? FONTS[st.font].css : '';
+			t.style.fontWeight = st.bold ? 'bold' : 'normal';
+			t.style.fontStyle = st.italic ? 'italic' : '';
+			t.style.textDecoration = st.underline ? 'underline' : '';
 		}
 
 		lines.forEach((line, i) => {
@@ -538,6 +601,15 @@
 		});
 
 		return t;
+	}
+
+	// Libellé d'un texte ou d'une zone, placé dans la boîte selon n.align / n.valign, à padX / padY du bord.
+	function drawBoxText(parent, n, padX, padY, cls) {
+		const x = {left: padX, right: n.w - padX}[n.align] ?? n.w / 2;
+		const y = {top: padY, bottom: n.h - padY}[n.valign] ?? n.h / 2;
+
+		return drawText(parent, n.label, x, y, {size: n.fontSize, color: n.color, anchor: {left: 'start', right: 'end'}[n.align],
+			valign: n.valign, style: n, cls});
 	}
 
 	function iconSvg(icon, size) {
@@ -1105,15 +1177,7 @@
 					}
 
 					if (n.label) {
-						const lines = n.label.split('\n').length;
-						const pos = {
-							topleft: [12, 10, 'start', 'top'],
-							top: [n.w / 2, 10, 'middle', 'top'],
-							bottom: [n.w / 2, n.h - 10 - lines * n.fontSize * 1.2, 'middle', 'top']
-						}[n.valign] || [n.w / 2, n.h / 2, 'middle', 'middle'];
-
-						drawText(g, n.label, pos[0], pos[1], {size: n.fontSize, color: n.color, anchor: pos[2],
-							valign: pos[3], cls: 'bm-label bm-shape-label'});
+						drawBoxText(g, n, 12, 10, 'bm-label bm-shape-label');
 					}
 				}
 				else {
@@ -1127,7 +1191,7 @@
 						hit.style.stroke = n.stroke;
 					}
 
-					drawText(g, n.label, n.w / 2, n.h / 2, {size: n.fontSize, color: n.color, valign: 'middle'});
+					drawBoxText(g, n, 4, 3, 'bm-label');
 				}
 
 				if (this.edit) {
@@ -2909,7 +2973,10 @@
 		}
 
 		row(parent, label, control) {
-			parent.append(htmlEl('label', {class: 'bm-row'}, [htmlEl('span', {class: 'bm-row-label', text: label}), control]));
+			// Pas de <label> autour d'un groupe de boutons : un clic sur l'intitulé activerait le premier bouton.
+			const tag = control.classList.contains('bm-seg') ? 'div' : 'label';
+
+			parent.append(htmlEl(tag, {class: 'bm-row'}, [htmlEl('span', {class: 'bm-row-label', text: label}), control]));
 
 			return control;
 		}
@@ -2998,6 +3065,45 @@
 				wrap.classList.add('bm-color-default');
 				this.render();
 			});
+
+			return wrap;
+		}
+
+		// Bouton bascule d'un booléen (gras, italique…) ; css : style appliqué à la lettre du bouton.
+		toggleField(obj, key, label, title, css) {
+			const b = htmlEl('button', {type: 'button', class: 'bm-seg-btn' + (obj[key] ? ' bm-active' : ''), title,
+				'aria-pressed': obj[key] ? 'true' : 'false'}, [htmlEl('span', {style: css, text: label})]);
+
+			b.addEventListener('click', e => {
+				e.preventDefault();
+				this.checkpoint();
+				obj[key] = !obj[key];
+				b.classList.toggle('bm-active', obj[key]);
+				b.setAttribute('aria-pressed', obj[key] ? 'true' : 'false');
+				this.render();
+			});
+
+			return b;
+		}
+
+		// Groupe de boutons à choix unique : choices = [[valeur, icône SVG, titre], …].
+		choiceField(obj, key, choices) {
+			const wrap = htmlEl('span', {class: 'bm-seg'});
+
+			for (const [value, svg, title] of choices) {
+				const b = htmlEl('button', {type: 'button', class: 'bm-seg-btn' + (obj[key] === value ? ' bm-active' : ''), title});
+
+				b.innerHTML = svg;
+				b.addEventListener('click', e => {
+					e.preventDefault();
+					this.checkpoint();
+					obj[key] = value;
+					wrap.querySelectorAll('.bm-active').forEach(x => x.classList.remove('bm-active'));
+					b.classList.add('bm-active');
+					this.render();
+				});
+				wrap.append(b);
+			}
 
 			return wrap;
 		}
@@ -3174,16 +3280,35 @@
 				s.append(this.iconPicker(n));
 			}
 
+			if (hasTextStyle(n)) {
+				const st = this.section('Mise en forme du texte');
+
+				this.row(st, 'Police', this.selectField(n, 'font',
+					Object.fromEntries(Object.entries(FONTS).map(([k, f]) => [k, f.name]))));
+				this.row(st, 'Taille', this.numberField(n, 'fontSize', 6, 96));
+				this.row(st, 'Couleur', this.colorField(n, 'color', '#1f2c33'));
+				this.row(st, 'Style', htmlEl('span', {class: 'bm-seg'}, [
+					this.toggleField(n, 'bold', 'G', 'Gras', 'font-weight: bold'),
+					this.toggleField(n, 'italic', 'I', 'Italique', 'font-style: italic'),
+					this.toggleField(n, 'underline', 'S', 'Souligné', 'text-decoration: underline')
+				]));
+				this.row(st, 'Horizontal', this.choiceField(n, 'align', [
+					['left', ALIGN_ICONS.left, 'Aligné à gauche'],
+					['center', ALIGN_ICONS.center, 'Centré'],
+					['right', ALIGN_ICONS.right, 'Aligné à droite']
+				]));
+				this.row(st, 'Vertical', this.choiceField(n, 'valign', [
+					['top', ALIGN_ICONS.top, 'En haut'],
+					['middle', ALIGN_ICONS.middle, 'Au milieu'],
+					['bottom', ALIGN_ICONS.bottom, 'En bas']
+				]));
+			}
+
 			const s2 = this.section('Apparence');
 
 			if (n.type !== 'text') {
 				this.row(s2, 'Forme', this.selectField(n, 'shape', {round: 'Rectangle arrondi', rect: 'Rectangle',
 					ellipse: 'Ellipse'}));
-			}
-
-			if (n.type === 'shape') {
-				this.row(s2, 'Libellé en', this.selectField(n, 'valign', {topleft: 'Haut à gauche', top: 'Haut', middle: 'Centre',
-					bottom: 'Bas'}));
 			}
 
 			const size = htmlEl('span', {class: 'bm-inline'}, [
@@ -3198,8 +3323,11 @@
 				this.row(s2, 'Icône', this.colorField(n, 'iconColor', '#40525e'));
 			}
 
-			this.row(s2, 'Texte', this.colorField(n, 'color', '#1f2c33'));
-			this.row(s2, 'Taille texte', this.numberField(n, 'fontSize', 6, 96));
+			if (!hasTextStyle(n)) {
+				this.row(s2, 'Texte', this.colorField(n, 'color', '#1f2c33'));
+				this.row(s2, 'Taille texte', this.numberField(n, 'fontSize', 6, 96));
+			}
+
 			this.row(s2, 'Lien (URL)', this.textField(n, 'url', {placeholder: 'https://… ou autre carte'}));
 
 			const s3 = this.section('Actions');

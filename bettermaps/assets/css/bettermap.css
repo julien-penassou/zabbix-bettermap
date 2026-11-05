@@ -237,10 +237,6 @@ html[color-scheme="dark"] .bm-root {
 	pointer-events: none;
 }
 
-.bm-shape-label {
-	font-weight: bold;
-}
-
 .bm-host-label {
 	font-weight: bold;
 	paint-order: stroke;
@@ -711,6 +707,56 @@ div.bm-row-label {
 	font-size: 16px;
 	cursor: pointer;
 	padding: 0 4px;
+}
+
+.bm-row > .bm-seg {
+	flex: none;
+}
+
+.bm-seg {
+	display: inline-flex;
+}
+
+.bm-seg-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 26px;
+	margin: 0 0 0 -1px;
+	padding: 0;
+	border: 1px solid var(--bm-border);
+	background: var(--bm-bg);
+	color: var(--bm-text);
+	font-family: Georgia, serif;
+	font-size: 14px;
+	cursor: pointer;
+}
+
+.bm-seg-btn:first-child {
+	margin-left: 0;
+	border-radius: 2px 0 0 2px;
+}
+
+.bm-seg-btn:last-child {
+	border-radius: 0 2px 2px 0;
+}
+
+.bm-seg-btn:hover,
+.bm-seg-btn:focus {
+	border-color: var(--bm-accent);
+	background: var(--bm-bg);
+	color: var(--bm-text);
+	position: relative;
+}
+
+.bm-seg-btn.bm-active,
+.bm-seg-btn.bm-active:hover,
+.bm-seg-btn.bm-active:focus {
+	background: var(--bm-accent);
+	border-color: var(--bm-accent);
+	color: #fff;
+	position: relative;
 }
 
 .bm-buttons {
