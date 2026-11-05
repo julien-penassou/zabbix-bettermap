@@ -124,10 +124,11 @@
 
 	// fromPort / toPort : point de connexion fixe {x, y} relatif au nœud (0..1), ou null pour une extrémité
 	// flottante qui suit le côté le plus proche. labelPos : position du libellé le long du lien (0..1).
-	// triggers : déclencheurs qui colorent aussi le lien, [{triggerid, triggername, hostname}].
+	// triggers : déclencheurs qui colorent le lien en mode status 'triggers', [{triggerid, triggername, hostname}] ;
+	// triggerLogic : or (au moins un en problème) ou and (tous en problème).
 	const LINK_DEFAULTS = {
 		points: [], style: 'curve', color: '', width: 2, dash: 'solid', arrow: 'none', label: '', fontSize: 11,
-		status: 'both', triggers: [], fromPort: null, toPort: null, rounded: true, labelPos: 0.5
+		status: 'both', triggers: [], triggerLogic: 'or', fromPort: null, toPort: null, rounded: true, labelPos: 0.5
 	};
 
 	// Longueur du départ perpendiculaire d'un lien orthogonal, rayon des coins arrondis.
@@ -361,6 +362,7 @@
 				.map(t => ({triggerid: String(t.triggerid), triggername: String(t.triggername ?? ''),
 					hostname: String(t.hostname ?? '')}))
 				.filter((t, i, list) => list.findIndex(x => x.triggerid === t.triggerid) === i);
+			link.triggerLogic = link.triggerLogic === 'and' ? 'and' : 'or';
 			doc.links.push(link);
 		}
 
@@ -1121,11 +1123,14 @@
 				}
 			}
 
-			for (const t of l.status === 'triggers' ? l.triggers : []) {
-				const st = this.triggerState(t.triggerid);
+			if (l.status === 'triggers' && l.triggers.length) {
+				const problems = l.triggers.map(t => this.triggerState(t.triggerid)).filter(st => st.state === 'problem');
 
-				if (st.state === 'problem') {
-					sev = Math.max(sev, st.severity);
+				// ET : le lien n'est en problème que si tous ses déclencheurs le sont.
+				if (l.triggerLogic !== 'and' || problems.length === l.triggers.length) {
+					for (const st of problems) {
+						sev = Math.max(sev, st.severity);
+					}
 				}
 			}
 
@@ -1699,6 +1704,8 @@
 				const a = this.node(l.from), b = this.node(l.to);
 
 				title.textContent = this.nodeLabel(a) + ' ↔ ' + this.nodeLabel(b) + (l.label ? '\n' + l.label : '')
+					+ (l.status === 'triggers' && l.triggers.length > 1
+						? '\n' + (l.triggerLogic === 'and' ? 'Tous les déclencheurs (ET) :' : 'Au moins un déclencheur (OU) :') : '')
 					+ (l.status === 'triggers' ? l.triggers : []).map(t => '\n• ' + this.triggerText(t) + ' : ' + this.triggerStateText(t.triggerid)).join('');
 			}
 		}
@@ -3554,13 +3561,20 @@
 			}, {panel: true, after: () => this.refreshStatus()}));
 
 			if (l.status === 'triggers') {
+				this.row(s3, 'Condition', this.selectField(l, 'triggerLogic', {
+					or: 'OU : au moins un en problème', and: 'ET : tous en problème'
+				}, {panel: true}));
 				this.panelLinkTriggers(s3, l);
 			}
 
-			s3.append(htmlEl('div', {class: 'bm-hint', text: l.status === 'triggers'
-				? 'Le lien prend la couleur de la sévérité la plus haute des problèmes des déclencheurs ci-dessus.'
-				: 'Le lien prend la couleur de la sévérité la plus haute des problèmes des nœuds choisis '
-					+ '(hôtes, groupes, items ou déclencheurs).'}));
+			s3.append(htmlEl('div', {class: 'bm-hint', text: l.status !== 'triggers'
+				? 'Le lien prend la couleur de la sévérité la plus haute des problèmes des nœuds choisis '
+					+ '(hôtes, groupes, items ou déclencheurs).'
+				: l.triggerLogic === 'and'
+					? 'Le lien ne passe en problème que si tous les déclencheurs ci-dessus sont en problème, '
+						+ 'avec la couleur de la sévérité la plus haute.'
+					: 'Le lien passe en problème dès qu\'un des déclencheurs ci-dessus l\'est, '
+						+ 'avec la couleur de la sévérité la plus haute.'}));
 
 			const s4 = this.section('Actions');
 
