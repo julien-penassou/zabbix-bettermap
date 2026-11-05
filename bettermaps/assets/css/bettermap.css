@@ -806,9 +806,19 @@ div.bm-row-label {
 .bm-trig-name {
 	flex: 1;
 	min-width: 0;
+}
+
+.bm-trig-title,
+.bm-trig-host {
+	display: block;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.bm-trig-host {
+	color: var(--bm-muted);
+	font-size: 11px;
 }
 
 .bm-trig-state {

@@ -3418,7 +3418,8 @@
 			const st = this.triggerState(el.dataset.triggerid);
 
 			el.className = 'bm-trig-state bm-trig-' + st.state;
-			el.textContent = this.triggerStateText(el.dataset.triggerid);
+			el.textContent = st.state === 'problem' ? SEVERITIES[st.severity].name : this.triggerStateText(el.dataset.triggerid);
+			el.title = this.triggerStateText(el.dataset.triggerid);
 			el.style.background = st.state === 'problem' ? SEVERITIES[st.severity].color : '';
 		}
 
@@ -3435,9 +3436,14 @@
 			l.triggers.forEach((t, i) => {
 				const state = htmlEl('span', {'data-triggerid': t.triggerid});
 
+				const live = this.status.triggers[t.triggerid];
+
 				this.fillTriggerState(state);
-				list.append(htmlEl('div', {class: 'bm-trig'}, [
-					htmlEl('span', {class: 'bm-trig-name', text: this.triggerText(t), title: this.triggerText(t)}),
+				list.append(htmlEl('div', {class: 'bm-trig', title: this.triggerText(t)}, [
+					htmlEl('span', {class: 'bm-trig-name'}, [
+						htmlEl('span', {class: 'bm-trig-title', text: live ? live.name : t.triggername}),
+						htmlEl('span', {class: 'bm-trig-host', text: live ? live.host : t.hostname})
+					]),
 					state,
 					htmlEl('button', {type: 'button', class: 'bm-trig-del', title: 'Retirer ce déclencheur', text: '×',
 						onclick: e => {
