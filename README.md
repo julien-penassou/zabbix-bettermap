@@ -7,7 +7,9 @@ Ce module frontend ajoute **Surveillance › Cartes+**, un éditeur de cartes in
 - points de passage déplaçables (aimantés sur l'alignement de leurs voisins), extrémités reconnectables d'un nœud à un autre, libellé déplaçable le long du lien ;
 - liens parallèles (LACP, redondance) écartés automatiquement ;
 - hôtes Zabbix avec icônes vectorielles, pastille de statut et halo pulsant pour les problèmes Haut et Désastre ;
-- liens colorés selon la sévérité des problèmes de leurs extrémités ;
+- groupes d'hôtes : statut cumulé des hôtes surveillés du groupe (sévérité la plus haute, nombre de problèmes, hôtes en problème) ;
+- items : dernière valeur affichée en direct (unités et tables de correspondance appliquées), statut d'après les déclencheurs de l'item ;
+- liens colorés selon la sévérité des problèmes de leurs extrémités (hôte, groupe ou item) ;
 - zones (rectangles, ellipses) et textes libres ;
 - annuler/rétablir, copier/coller (y compris entre deux cartes), alignement et répartition, grille magnétique ;
 - mode visualisation : rafraîchissement automatique, popup des problèmes au clic, plein écran ;
@@ -38,12 +40,13 @@ Au premier affichage, le module crée une table `bettermaps_map` dans la base Za
 |---|---|
 | Voir les cartes | accès à l'interface « Surveillance › Cartes » dans le rôle |
 | Créer, modifier, supprimer | type Admin ou Super admin, avec l'action « Créer et modifier les cartes » |
-| Statut des hôtes | via l'API Zabbix : chacun ne voit que les hôtes auxquels il a accès |
+| Statut des hôtes, groupes et items | via l'API Zabbix : chacun ne voit que les objets auxquels il a accès |
 
 ## Utilisation de l'éditeur
 
 | Geste | Effet |
 |---|---|
+| + Hôte, + Groupe, + Item | ajouter un objet Zabbix, à choisir dans le panneau (pour un item : l'hôte, puis l'item) |
 | Survoler un nœud, tirer depuis un point bleu… | créer un lien, fixé à ce point |
 | … et relâcher sur un point bleu d'un autre nœud | extrémité fixe (le point s'aimante à l'approche) |
 | … et relâcher au milieu d'un nœud | extrémité flottante (suit le côté le plus proche) |
@@ -69,7 +72,7 @@ Au premier affichage, le module crée une table `bettermaps_map` dans la base Za
 
 - Si le nom du widget est laissé vide, c'est le nom de la carte qui s'affiche.
 - Le statut est rafraîchi selon l'intervalle du widget (30 s par défaut). Le zoom et le popup ouvert sont conservés, et les modifications de la carte sont prises en compte automatiquement.
-- Le widget est en lecture seule. Un clic sur un hôte affiche ses problèmes. Les boutons de zoom apparaissent au survol, et le bouton ↗ ouvre la carte en grand.
+- Le widget est en lecture seule. Un clic sur un hôte, un groupe ou un item affiche ses problèmes. Les boutons de zoom apparaissent au survol, et le bouton ↗ ouvre la carte en grand.
 - **Ctrl + molette** zoome. La molette seule fait défiler le tableau de bord, comme d'habitude.
 - La carte se recadre quand on redimensionne le widget.
 
@@ -88,9 +91,9 @@ bettermaps/
 ├── manifest.json              module de type "widget" : pages Cartes+ + widget Carte+
 ├── Widget.php                 nom du widget, ajout de l'entrée de menu
 ├── actions/                   contrôleurs : liste, vue, création, sauvegarde, suppression,
-│                              recherche d'hôtes, statut, contenu du widget (WidgetView.php)
+│                              recherche d'hôtes / groupes / items, statut, contenu du widget (WidgetView.php)
 ├── includes/                  formulaire du widget (choix de la carte, boutons de zoom)
-├── lib/                       stockage SQL, statut des hôtes, droits, assets, base des contrôleurs JSON
+├── lib/                       stockage SQL, statut des objets Zabbix, droits, assets, base des contrôleurs JSON
 ├── views/                     pages liste et carte, vue et formulaire du widget
 ├── assets/js/bettermap.js     l'éditeur SVG (sans dépendance)
 ├── assets/js/class.widget.js  classe JS du widget

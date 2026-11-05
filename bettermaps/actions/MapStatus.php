@@ -3,17 +3,19 @@
 namespace Modules\BetterMaps\Actions;
 
 use Modules\BetterMaps\Lib\Access;
-use Modules\BetterMaps\Lib\HostStatus;
 use Modules\BetterMaps\Lib\JsonController;
+use Modules\BetterMaps\Lib\Status;
 
 /**
- * Statut temps réel des hôtes d'une carte.
+ * Statut temps réel des objets d'une carte : hôtes, groupes d'hôtes, items.
  */
 class MapStatus extends JsonController {
 
 	protected function checkInput(): bool {
 		return $this->validateJson([
-			'hostids' => 'array_id'
+			'hostids' => 'array_id',
+			'groupids' => 'array_id',
+			'itemids' => 'array_id'
 		]);
 	}
 
@@ -22,6 +24,10 @@ class MapStatus extends JsonController {
 	}
 
 	protected function doAction(): void {
-		$this->respond(['hosts' => (object) HostStatus::get($this->getInput('hostids', []))]);
+		$this->respond(Status::get([
+			'hostids' => $this->getInput('hostids', []),
+			'groupids' => $this->getInput('groupids', []),
+			'itemids' => $this->getInput('itemids', [])
+		]));
 	}
 }

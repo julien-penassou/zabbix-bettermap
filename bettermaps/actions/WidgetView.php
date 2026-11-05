@@ -5,11 +5,11 @@ namespace Modules\BetterMaps\Actions;
 use CControllerDashboardWidgetView;
 use CControllerResponseData;
 use Modules\BetterMaps\Lib\Access;
-use Modules\BetterMaps\Lib\HostStatus;
 use Modules\BetterMaps\Lib\MapStorage;
+use Modules\BetterMaps\Lib\Status;
 
 /**
- * Contenu du widget Carte+ : la carte et le statut de ses hôtes en une seule réponse.
+ * Contenu du widget Carte+ : la carte et le statut de ses objets en une seule réponse.
  */
 class WidgetView extends CControllerDashboardWidgetView {
 
@@ -36,7 +36,7 @@ class WidgetView extends CControllerDashboardWidgetView {
 					'name' => $map['name'],
 					'updated' => (int) $map['updated'],
 					'data' => $doc ?: new \stdClass(),
-					'status' => (object) HostStatus::get(HostStatus::mapHostids($doc)),
+					'status' => Status::get(Status::mapObjects($doc)),
 					'controls' => $this->fields_values['show_controls'] == 1
 				];
 

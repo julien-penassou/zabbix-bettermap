@@ -39,6 +39,7 @@
 		phone: {name: 'Téléphone IP', svg: '<rect x="8" y="10" width="32" height="30" rx="3"/><path d="M14 10V6h8v4"/><rect x="14" y="16" width="20" height="7"/><path d="M15 29h2M23 29h2M31 29h2M15 34h2M23 34h2M31 34h2"/>'},
 		camera: {name: 'Caméra', svg: '<rect x="5" y="15" width="28" height="18" rx="3"/><path d="M33 21l10-5v16l-10-5"/><circle cx="14" cy="24" r="4"/>'},
 		ups: {name: 'Onduleur / Énergie', svg: '<rect x="11" y="5" width="26" height="38" rx="3"/><path d="M26 12l-6 12h8l-6 12"/>'},
+		group: {name: 'Groupe', svg: '<rect x="17" y="5" width="14" height="11" rx="2"/><rect x="4" y="32" width="14" height="11" rx="2"/><rect x="30" y="32" width="14" height="11" rx="2"/><path d="M24 16v8M11 32v-8h26v8"/>'},
 		generic: {name: 'Générique', svg: '<rect x="8" y="8" width="32" height="32" rx="6"/><circle cx="24" cy="24" r="6"/>'}
 	};
 
@@ -54,10 +55,30 @@
 	const NODE_DEFAULTS = {
 		host: {w: 56, h: 56, label: '', hostid: '', hostname: '', icon: 'server', shape: 'round', fill: '', stroke: '',
 			color: '', iconColor: '', fontSize: 12, url: ''},
+		group: {w: 56, h: 56, label: '', groupid: '', groupname: '', icon: 'group', shape: 'round', fill: '', stroke: '',
+			color: '', iconColor: '', fontSize: 12, url: ''},
+		item: {w: 150, h: 54, label: '', hostid: '', hostname: '', itemid: '', itemname: '', shape: 'round', fill: '',
+			stroke: '', color: '', fontSize: 13, url: ''},
 		shape: {w: 200, h: 120, label: 'Zone', shape: 'round', fill: '', stroke: '', color: '', fontSize: 13, url: '',
 			valign: 'topleft'},
 		text: {w: 120, h: 30, label: 'Texte', fill: '', stroke: '', color: '', fontSize: 14, url: ''}
 	};
+
+	// Nœuds liés à un objet Zabbix : champ identifiant, champ du nom mémorisé, clés du statut renvoyé par le serveur.
+	const OBJECT_TYPES = {
+		host: {field: 'hostid', name: 'hostname', status: 'hosts', ids: 'hostids'},
+		group: {field: 'groupid', name: 'groupname', status: 'groups', ids: 'groupids'},
+		item: {field: 'itemid', name: 'itemname', status: 'items', ids: 'itemids'}
+	};
+
+	// Hôtes et groupes : icône avec le libellé dessous.
+	function isDevice(n) {
+		return n.type === 'host' || n.type === 'group';
+	}
+
+	function emptyStatus() {
+		return {hosts: {}, groups: {}, items: {}};
+	}
 
 	// fromPort / toPort : point de connexion fixe {x, y} relatif au nœud (0..1), ou null pour une extrémité
 	// flottante qui suit le côté le plus proche. labelPos : position du libellé le long du lien (0..1).
@@ -531,7 +552,7 @@
 			this.edit = !!cfg.edit;
 			this.sel = {nodes: new Set(), links: new Set()};
 			this.view = {x: 0, y: 0, k: 1};
-			this.status = {};
+			this.status = emptyStatus();
 			this.statusLoaded = false;
 			this.undoStack = [];
 			this.redoStack = [];
@@ -701,6 +722,8 @@
 			if (this.edit) {
 				tb.append(
 					btn('+ Hôte', 'Ajouter un hôte Zabbix', () => this.addNode('host')),
+					btn('+ Groupe', 'Ajouter un groupe d\'hôtes (statut cumulé de ses hôtes)', () => this.addNode('group')),
+					btn('+ Item', 'Ajouter un item (dernière valeur et statut de ses déclencheurs)', () => this.addNode('item')),
 					btn('+ Zone', 'Ajouter un rectangle / une zone', () => this.addNode('shape', {shape: 'round'})),
 					btn('+ Ellipse', 'Ajouter une ellipse', () => this.addNode('shape', {shape: 'ellipse', w: 140, h: 90,
 						label: ''})),
@@ -815,13 +838,23 @@
 		}
 
 		nodeLabel(n) {
-			if (n.label !== '' || n.type !== 'host') {
+			const kind = OBJECT_TYPES[n.type];
+
+			if (n.label !== '' || !kind) {
 				return n.label;
 			}
 
-			const st = this.status[n.hostid];
+			const st = this.objStatus(n);
+			const empty = {host: '(choisir un hôte)', group: '(choisir un groupe)', item: '(choisir un item)'}[n.type];
 
-			return st ? st.name : (n.hostname || (this.edit ? '(choisir un hôte)' : ''));
+			return st ? st.name : (n[kind.name] || (this.edit ? empty : ''));
+		}
+
+		// Statut renvoyé par le serveur pour l'objet Zabbix du nœud, ou undefined.
+		objStatus(n) {
+			const kind = OBJECT_TYPES[n.type];
+
+			return kind && n[kind.field] ? this.status[kind.status][n[kind.field]] : undefined;
 		}
 
 		/* ---------------- historique */
@@ -872,8 +905,16 @@
 
 		/* ---------------- statut Zabbix */
 
-		hostids() {
-			return [...new Set(this.doc.nodes.filter(n => n.type === 'host' && n.hostid).map(n => n.hostid))];
+		// {hostids: [...], groupids: [...], itemids: [...]} des objets Zabbix de la carte.
+		objectIds() {
+			const ids = {};
+
+			for (const [type, kind] of Object.entries(OBJECT_TYPES)) {
+				ids[kind.ids] = [...new Set(this.doc.nodes.filter(n => n.type === type && n[kind.field])
+					.map(n => n[kind.field]))];
+			}
+
+			return ids;
 		}
 
 		refreshStatus() {
@@ -881,33 +922,40 @@
 				return;
 			}
 
-			const hostids = this.hostids();
+			const ids = this.objectIds();
 
-			if (!hostids.length) {
-				this.status = {};
+			if (!Object.values(ids).some(list => list.length)) {
+				this.status = emptyStatus();
 				this.statusLoaded = true;
 				this.render();
 
 				return;
 			}
 
-			post('bettermap.status', {hostids})
+			post('bettermap.status', ids)
 				.then(res => {
 					if (res.error) {
 						throw new Error(res.error);
 					}
 
-					this.setStatus(res.hosts);
+					this.setStatus(res);
 				})
 				.catch(err => this.notify(err.message, true));
 		}
 
-		setStatus(hosts) {
+		setStatus(status) {
 			if (this.destroyed) {
 				return;
 			}
 
-			this.status = isObj(hosts) ? hosts : {};
+			this.status = emptyStatus();
+
+			for (const key in this.status) {
+				if (isObj(status) && isObj(status[key])) {
+					this.status[key] = status[key];
+				}
+			}
+
 			this.statusLoaded = true;
 			this.lastUpdate = new Date();
 			this.render();
@@ -930,11 +978,13 @@
 		}
 
 		nodeStatus(n) {
-			if (n.type !== 'host' || !n.hostid || !this.statusLoaded) {
+			const kind = OBJECT_TYPES[n.type];
+
+			if (!kind || !n[kind.field] || !this.statusLoaded) {
 				return {state: 'none'};
 			}
 
-			const st = this.status[n.hostid];
+			const st = this.objStatus(n);
 
 			if (!st) {
 				return {state: 'unknown'};
@@ -944,16 +994,23 @@
 				return {state: 'disabled'};
 			}
 
+			// Un groupe est « en maintenance » quand tous ses hôtes surveillés le sont.
+			const maintenance = n.type === 'group' ? st.hosts > 0 && st.maintenance === st.hosts : !!st.maintenance;
+
 			if (st.problems.length) {
 				return {
 					state: 'problem',
 					severity: Math.max(...st.problems.map(p => p.severity)),
 					count: st.problems.length,
-					maintenance: st.maintenance
+					maintenance
 				};
 			}
 
-			return {state: st.maintenance ? 'maint' : 'ok'};
+			if (st.unsupported) {
+				return {state: 'unsupported'};
+			}
+
+			return {state: maintenance ? 'maint' : 'ok'};
 		}
 
 		linkSeverity(l) {
@@ -1020,8 +1077,11 @@
 					transform: `translate(${n.x},${n.y})`
 				}, n.type === 'shape' ? this.gZones : this.gNodes);
 
-				if (n.type === 'host') {
-					this.renderHost(g, n);
+				if (isDevice(n)) {
+					this.renderDevice(g, n);
+				}
+				else if (n.type === 'item') {
+					this.renderItem(g, n);
 				}
 				else if (n.type === 'shape') {
 					const body = shapeEl(n.shape, n.w, n.h, {class: 'bm-body'}, g);
@@ -1073,8 +1133,8 @@
 			}
 		}
 
-		renderHost(g, n) {
-			const st = this.nodeStatus(n);
+		// Corps d'un nœud Zabbix (hôte, groupe, item) : halo et bordure colorés selon la sévérité.
+		renderStatusBody(g, n, st) {
 			const sevColor = st.state === 'problem' ? SEVERITIES[st.severity].color : null;
 
 			g.classList.add('bm-st-' + st.state);
@@ -1099,23 +1159,11 @@
 				body.style.stroke = n.stroke;
 			}
 
-			const s = Math.min(n.w, n.h) * 0.68;
-			const icon = svgEl('g', {class: 'bm-icon',
-				transform: `translate(${(n.w - s) / 2},${(n.h - s) / 2}) scale(${s / 48})`}, g);
+			return sevColor;
+		}
 
-			icon.innerHTML = (ICONS[n.icon] || ICONS.generic).svg;
-
-			if (n.iconColor) {
-				icon.style.stroke = n.iconColor;
-			}
-
-			const label = this.nodeLabel(n);
-
-			if (label) {
-				drawText(g, label, n.w / 2, n.h + 5, {size: n.fontSize, color: n.color, cls: 'bm-label bm-host-label'});
-			}
-
-			// Pastille de statut
+		// Pastilles en haut du nœud : nombre de problèmes (ou OK) à droite, maintenance.
+		renderBadges(g, n, st, sevColor) {
 			const bx = n.w - 2, by = 2;
 
 			if (st.state === 'problem') {
@@ -1138,13 +1186,83 @@
 
 				t.textContent = 'M';
 			}
+		}
 
+		// Infobulle : nom de l'objet, résumé, problèmes.
+		renderTitle(g, n) {
+			const info = this.objStatus(n);
 			const title = svgEl('title', {}, g);
-			const info = this.status[n.hostid];
+			const kind = OBJECT_TYPES[n.type];
+			let text = n[kind.name] || '';
 
-			title.textContent = info
-				? info.name + (info.problems.length ? '\n' + info.problems.map(p => '• ' + p.name).join('\n') : '\nAucun problème')
-				: (n.hostname || '');
+			if (info) {
+				text = info.name;
+
+				if (n.type === 'group') {
+					text += '\n' + info.hosts + ' hôte(s), ' + info.problem_hosts + ' en problème';
+				}
+				else if (n.type === 'item') {
+					text = info.host + ' : ' + info.name + '\n' + (info.value ?? 'aucune donnée');
+				}
+
+				text += info.problems.length
+					? '\n' + info.problems.map(p => '• ' + (n.type === 'group' ? p.host + ' : ' : '') + p.name).join('\n')
+					: '\nAucun problème';
+			}
+
+			title.textContent = text;
+		}
+
+		renderItem(g, n) {
+			const st = this.nodeStatus(n);
+			const info = this.objStatus(n);
+			const sevColor = this.renderStatusBody(g, n, st);
+			const label = this.nodeLabel(n);
+			let value = '';
+
+			if (info) {
+				value = info.value ?? '—';
+			}
+			else if (n.itemid && this.statusLoaded) {
+				value = '?';
+			}
+
+			if (label && value !== '') {
+				drawText(g, label, n.w / 2, n.h * 0.3, {size: n.fontSize * 0.8, color: n.color, valign: 'middle',
+					cls: 'bm-label bm-item-name'});
+				drawText(g, value, n.w / 2, n.h * 0.67, {size: n.fontSize * 1.4, color: n.color, valign: 'middle',
+					cls: 'bm-label bm-item-value'});
+			}
+			else if (label || value !== '') {
+				drawText(g, label || value, n.w / 2, n.h / 2, {size: n.fontSize, color: n.color, valign: 'middle',
+					cls: 'bm-label' + (label ? '' : ' bm-item-value')});
+			}
+
+			this.renderBadges(g, n, st, sevColor);
+			this.renderTitle(g, n);
+		}
+
+		renderDevice(g, n) {
+			const st = this.nodeStatus(n);
+			const sevColor = this.renderStatusBody(g, n, st);
+			const s = Math.min(n.w, n.h) * 0.68;
+			const icon = svgEl('g', {class: 'bm-icon',
+				transform: `translate(${(n.w - s) / 2},${(n.h - s) / 2}) scale(${s / 48})`}, g);
+
+			icon.innerHTML = (ICONS[n.icon] || ICONS.generic).svg;
+
+			if (n.iconColor) {
+				icon.style.stroke = n.iconColor;
+			}
+
+			const label = this.nodeLabel(n);
+
+			if (label) {
+				drawText(g, label, n.w / 2, n.h + 5, {size: n.fontSize, color: n.color, cls: 'bm-label bm-host-label'});
+			}
+
+			this.renderBadges(g, n, st, sevColor);
+			this.renderTitle(g, n);
 		}
 
 		// a / b : nœuds d'extrémité (par défaut ceux du lien ; l'aperçu de connexion passe un nœud « curseur »).
@@ -1331,7 +1449,7 @@
 		}
 
 		labelExtent(n) {
-			const label = n.type === 'host' ? this.nodeLabel(n) : '';
+			const label = isDevice(n) ? this.nodeLabel(n) : '';
 
 			return label ? label.split('\n').length * n.fontSize * 1.2 + 6 : 0;
 		}
@@ -1622,7 +1740,7 @@
 				x1 = Math.min(x1, n.x);
 				y1 = Math.min(y1, n.y);
 				x2 = Math.max(x2, n.x + n.w);
-				y2 = Math.max(y2, n.y + n.h + (n.type === 'host' ? n.fontSize * 1.5 + 6 : 0));
+				y2 = Math.max(y2, n.y + n.h + (isDevice(n) ? n.fontSize * 1.5 + 6 : 0));
 			}
 
 			for (const l of this.doc.links) {
@@ -2070,8 +2188,11 @@
 		addLinkedNode(src, p) {
 			const n = Object.assign({}, src, {id: uid()});
 
-			if (n.type === 'host') {
-				Object.assign(n, {hostid: '', hostname: '', label: ''});
+			// Le nouveau nœud reste à configurer ; un item garde l'hôte de la source (autre item du même hôte).
+			const kind = OBJECT_TYPES[n.type];
+
+			if (kind) {
+				Object.assign(n, {[kind.field]: '', [kind.name]: '', label: ''});
 			}
 
 			n.x = this.snap(p.x - n.w / 2);
@@ -2118,10 +2239,10 @@
 				case 'click': {
 					const n = d.target ? this.node(d.target) : null;
 
-					if (n && n.url && n.type !== 'host') {
+					if (n && n.url && !OBJECT_TYPES[n.type]) {
 						window.open(n.url, '_self');
 					}
-					else if (n && n.type === 'host') {
+					else if (n && OBJECT_TYPES[n.type]) {
 						this.showPopup(n, e);
 					}
 					else {
@@ -2152,10 +2273,7 @@
 						this.sel.nodes.add(target.id);
 						this.render();
 						this.renderPanel();
-
-						const input = this.panel.querySelector('.bm-hostpicker input');
-
-						input && input.focus();
+						this.focusPicker(target);
 
 						return;
 					}
@@ -2347,12 +2465,21 @@
 			this.sel.nodes.add(n.id);
 			this.render();
 			this.renderPanel();
+			this.focusPicker(n);
+		}
 
-			if (type === 'host') {
-				const input = this.panel.querySelector('.bm-hostpicker input');
+		// Place le curseur dans le premier sélecteur d'objet Zabbix encore vide du panneau.
+		focusPicker(n) {
+			const kind = OBJECT_TYPES[n.type];
 
-				input && input.focus();
+			if (!kind || n[kind.field]) {
+				return;
 			}
+
+			const cls = n.type === 'item' && n.hostid ? '.bm-picker-item' : '.bm-picker';
+			const input = this.panel.querySelector(cls + ' input');
+
+			input && input.focus();
 		}
 
 		moveSelection(dx, dy) {
@@ -2558,27 +2685,48 @@
 		showPopup(n, e) {
 			this.popupNode = n;
 
-			const st = this.status[n.hostid];
+			const kind = OBJECT_TYPES[n.type];
+			const st = this.objStatus(n);
 			const p = this.popup;
 
 			p.textContent = '';
 
-			if (!n.hostid) {
+			if (!kind || !n[kind.field]) {
 				return;
 			}
 
-			p.append(htmlEl('div', {class: 'bm-popup-title', text: st ? st.name : (n.hostname || 'Hôte')}));
+			const what = {host: 'Hôte', group: 'Groupe', item: 'Item'}[n.type];
+
+			p.append(htmlEl('div', {class: 'bm-popup-title', text: st ? st.name : (n[kind.name] || what)}));
 
 			if (!st) {
-				p.append(htmlEl('div', {class: 'bm-popup-empty', text: 'Hôte introuvable ou non autorisé.'}));
+				p.append(htmlEl('div', {class: 'bm-popup-empty', text: what + ' introuvable ou non autorisé.'}));
 			}
 			else {
-				if (st.maintenance) {
+				if (n.type === 'item') {
+					p.append(
+						htmlEl('div', {class: 'bm-popup-sub', text: st.host}),
+						htmlEl('div', {class: 'bm-popup-value'}, [
+							htmlEl('span', {text: st.value ?? 'Aucune donnée'}),
+							st.clock ? htmlEl('span', {class: 'bm-page', text: 'il y a ' + formatAge(st.clock)}) : null
+						])
+					);
+
+					if (st.unsupported) {
+						p.append(htmlEl('div', {class: 'bm-popup-empty', text: 'Item non supporté'}));
+					}
+				}
+
+				if (n.type === 'group') {
+					p.append(htmlEl('div', {class: 'bm-popup-sub', text: st.hosts + ' hôte(s) surveillé(s) · '
+						+ st.problem_hosts + ' en problème' + (st.maintenance ? ' · ' + st.maintenance + ' en maintenance' : '')}));
+				}
+				else if (st.maintenance) {
 					p.append(htmlEl('div', {class: 'bm-popup-maint', text: 'En maintenance'}));
 				}
 
 				if (st.disabled) {
-					p.append(htmlEl('div', {class: 'bm-popup-empty', text: 'Hôte désactivé'}));
+					p.append(htmlEl('div', {class: 'bm-popup-empty', text: what + ' désactivé'}));
 				}
 
 				if (!st.problems.length) {
@@ -2592,7 +2740,7 @@
 							const li = htmlEl('li', {}, [
 								htmlEl('span', {class: 'bm-sev', style: 'background:' + SEVERITIES[pr.severity].color,
 									title: SEVERITIES[pr.severity].name}),
-								htmlEl('span', {class: 'bm-pname', text: pr.name}),
+								htmlEl('span', {class: 'bm-pname', text: (n.type === 'group' ? pr.host + ' : ' : '') + pr.name}),
 								htmlEl('span', {class: 'bm-page', text: formatAge(pr.clock) + (pr.acknowledged ? ' ✓' : '')})
 							]);
 
@@ -2606,13 +2754,8 @@
 				}
 			}
 
-			const id = encodeURIComponent(n.hostid);
-
 			p.append(htmlEl('div', {class: 'bm-popup-links'}, [
-				htmlEl('a', {href: 'zabbix.php?action=problem.view&filter_set=1&hostids%5B%5D=' + id, text: 'Problèmes'}),
-				htmlEl('a', {href: 'zabbix.php?action=latest.view&filter_set=1&hostids%5B%5D=' + id, text: 'Dernières données'}),
-				htmlEl('a', {href: 'zabbix.php?action=charts.view&filter_set=1&filter_hostids%5B%5D=' + id, text: 'Graphiques'}),
-				htmlEl('a', {href: 'zabbix.php?action=host.dashboard.view&hostid=' + id, text: 'Tableaux de bord'}),
+				...this.popupLinks(n, st).map(([text, href]) => htmlEl('a', {href, text})),
 				n.url ? htmlEl('a', {href: n.url, text: 'Lien'}) : null
 			]));
 
@@ -2630,6 +2773,42 @@
 
 			p.style.left = x + 'px';
 			p.style.top = y + 'px';
+		}
+
+		// Liens vers les pages Zabbix de l'objet : [texte, url].
+		popupLinks(n, st) {
+			if (n.type === 'group') {
+				const id = encodeURIComponent(n.groupid);
+
+				return [
+					['Problèmes', 'zabbix.php?action=problem.view&filter_set=1&groupids%5B%5D=' + id],
+					['Hôtes', 'zabbix.php?action=host.view&filter_set=1&groupids%5B%5D=' + id],
+					['Dernières données', 'zabbix.php?action=latest.view&filter_set=1&groupids%5B%5D=' + id]
+				];
+			}
+
+			if (n.type === 'item') {
+				const id = encodeURIComponent(n.itemid);
+				const hostid = encodeURIComponent(st ? st.hostid : n.hostid);
+				// Graphique pour les valeurs numériques, liste des valeurs sinon.
+				const history = st && !st.numeric ? 'showvalues' : 'showgraph';
+
+				return [
+					[history === 'showgraph' ? 'Graphique' : 'Historique',
+						'history.php?action=' + history + '&itemids%5B%5D=' + id],
+					['Problèmes', 'zabbix.php?action=problem.view&filter_set=1&hostids%5B%5D=' + hostid],
+					['Dernières données', 'zabbix.php?action=latest.view&filter_set=1&hostids%5B%5D=' + hostid]
+				];
+			}
+
+			const id = encodeURIComponent(n.hostid);
+
+			return [
+				['Problèmes', 'zabbix.php?action=problem.view&filter_set=1&hostids%5B%5D=' + id],
+				['Dernières données', 'zabbix.php?action=latest.view&filter_set=1&hostids%5B%5D=' + id],
+				['Graphiques', 'zabbix.php?action=charts.view&filter_set=1&filter_hostids%5B%5D=' + id],
+				['Tableaux de bord', 'zabbix.php?action=host.dashboard.view&hostid=' + id]
+			];
 		}
 
 		hidePopup() {
@@ -2778,44 +2957,59 @@
 			return wrap;
 		}
 
-		hostPicker(n) {
-			const input = htmlEl('input', {type: 'text', value: n.hostname, placeholder: 'Rechercher un hôte…'});
+		// Sélecteur d'objet Zabbix avec recherche. type : host, group ou item ; n[field] / n[name] reçoivent
+		// l'identifiant et le nom choisis. opts.params : paramètres de recherche en plus, opts.after : après le choix.
+		picker(n, type, field, name, opts = {}) {
+			const texts = {
+				host: ['Rechercher un hôte…', 'Aucun hôte trouvé'],
+				group: ['Rechercher un groupe…', 'Aucun groupe trouvé'],
+				item: ['Rechercher un item (nom ou clé)…', 'Aucun item trouvé']
+			}[type];
+			const input = htmlEl('input', {type: 'text', value: n[name], placeholder: texts[0], disabled: opts.disabled});
 			const list = htmlEl('div', {class: 'bm-hp-list', hidden: true});
-			const wrap = htmlEl('div', {class: 'bm-hostpicker'}, [input, list]);
+			const wrap = htmlEl('div', {class: 'bm-picker bm-picker-' + type}, [input, list]);
 			let timer, seq = 0;
 
 			const search = () => {
 				const my = ++seq;
 
-				post('bettermap.hosts', {search: input.value})
+				post('bettermap.search', Object.assign({type, search: input.value}, opts.params || {}))
 					.then(res => {
-						if (my !== seq) {
+						// Réponse périmée, ou arrivée après le choix (le champ a perdu le focus).
+						if (my !== seq || document.activeElement !== input) {
 							return;
+						}
+
+						if (res.error) {
+							throw new Error(res.error);
 						}
 
 						list.textContent = '';
 
-						const hosts = res.hosts || [];
+						const results = res.results || [];
 
-						if (!hosts.length) {
-							list.append(htmlEl('div', {class: 'bm-hp-empty', text: 'Aucun hôte trouvé'}));
+						if (!results.length) {
+							list.append(htmlEl('div', {class: 'bm-hp-empty', text: texts[1]}));
 						}
 
-						for (const h of hosts) {
+						for (const r of results) {
 							list.append(htmlEl('div', {
-								class: 'bm-hp-item' + (h.hostid === n.hostid ? ' bm-current' : ''), text: h.name,
+								class: 'bm-hp-item' + (r.id === n[field] ? ' bm-current' : ''),
+								title: r.detail || null,
 								onmousedown: e => {
 									e.preventDefault();
+									clearTimeout(timer);
 									this.checkpoint();
-									n.hostid = h.hostid;
-									n.hostname = h.name;
-									input.value = h.name;
+									n[field] = r.id;
+									n[name] = r.name;
+									input.value = r.name;
 									list.hidden = true;
 									input.blur();
+									opts.after && opts.after();
 									this.render();
 									this.refreshStatus();
 								}
-							}));
+							}, [r.name, r.detail ? htmlEl('span', {class: 'bm-hp-detail', text: r.detail}) : null]));
 						}
 
 						list.hidden = false;
@@ -2833,7 +3027,7 @@
 			});
 			input.addEventListener('blur', () => setTimeout(() => {
 				list.hidden = true;
-				input.value = n.hostname;
+				input.value = n[name];
 			}, 150));
 
 			return wrap;
@@ -2861,7 +3055,8 @@
 		}
 
 		panelNode(n) {
-			const typeNames = {host: 'Hôte Zabbix', shape: 'Forme / zone', text: 'Texte'};
+			const typeNames = {host: 'Hôte Zabbix', group: 'Groupe d\'hôtes', item: 'Item', shape: 'Forme / zone',
+				text: 'Texte'};
 			const s1 = this.section(typeNames[n.type]);
 
 			this.row(s1, 'Type', this.selectField(n, 'type', typeNames, {
@@ -2875,16 +3070,40 @@
 				}
 			}));
 
-			if (n.type === 'host') {
-				this.row(s1, 'Hôte', this.hostPicker(n));
+			if (n.type === 'host' || n.type === 'item') {
+				this.row(s1, 'Hôte', this.picker(n, 'host', 'hostid', 'hostname', {
+					after: () => {
+						if (n.type !== 'item') {
+							return;
+						}
+
+						// Nouvel hôte : l'item précédent n'en fait plus partie.
+						n.itemid = '';
+						n.itemname = '';
+						this.renderPanel();
+						this.focusPicker(n);
+					}
+				}));
+			}
+
+			if (n.type === 'item') {
+				this.row(s1, 'Item', this.picker(n, 'item', 'itemid', 'itemname', {
+					params: {hostid: n.hostid},
+					disabled: !n.hostid
+				}));
+			}
+
+			if (n.type === 'group') {
+				this.row(s1, 'Groupe', this.picker(n, 'group', 'groupid', 'groupname'));
 			}
 
 			this.row(s1, 'Libellé', this.textField(n, 'label', {
 				multiline: true, focus: true,
-				placeholder: n.type === 'host' ? 'Nom de l\'hôte par défaut' : ''
+				placeholder: {host: 'Nom de l\'hôte par défaut', group: 'Nom du groupe par défaut',
+					item: 'Nom de l\'item par défaut'}[n.type] || ''
 			}));
 
-			if (n.type === 'host') {
+			if (isDevice(n)) {
 				const s = this.section('Icône');
 
 				s.append(this.iconPicker(n));
@@ -2910,7 +3129,7 @@
 			this.row(s2, 'Fond', this.colorField(n, 'fill', n.type === 'shape' ? '#f3f6f9' : '#ffffff'));
 			this.row(s2, 'Bordure', this.colorField(n, 'stroke', '#9aa7b4'));
 
-			if (n.type === 'host') {
+			if (isDevice(n)) {
 				this.row(s2, 'Icône', this.colorField(n, 'iconColor', '#40525e'));
 			}
 
@@ -2979,10 +3198,11 @@
 			const s3 = this.section('Statut');
 
 			this.row(s3, 'Colorer selon', this.selectField(l, 'status', {
-				both: 'Les deux extrémités', from: 'L\'hôte de départ', to: 'L\'hôte d\'arrivée', none: 'Jamais'
+				both: 'Les deux extrémités', from: 'Le nœud de départ', to: 'Le nœud d\'arrivée', none: 'Jamais'
 			}));
 			s3.append(htmlEl('div', {class: 'bm-hint',
-				text: 'Le lien prend la couleur de la sévérité la plus haute des problèmes des hôtes choisis.'}));
+				text: 'Le lien prend la couleur de la sévérité la plus haute des problèmes des nœuds choisis '
+					+ '(hôtes, groupes ou items).'}));
 
 			const s4 = this.section('Actions');
 
