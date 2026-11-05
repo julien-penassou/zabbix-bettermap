@@ -1061,6 +1061,9 @@
 			if (!this.popup.hidden && this.popupNode) {
 				this.showPopup(this.popupNode);
 			}
+			else if (!this.popup.hidden && this.popupLink && this.link(this.popupLink)) {
+				this.showLinkPopup(this.link(this.popupLink));
+			}
 		}
 
 		startTimer() {
@@ -1662,7 +1665,7 @@
 				const ghost = this.drag && this.drag.moved && this.drag.type === 'end' && this.drag.link === l.id;
 				const g = svgEl('g', {
 					class: 'bm-link' + (this.sel.links.has(l.id) ? ' bm-selected' : '') + (sev >= 0 ? ' bm-link-problem' : '')
-						+ (ghost ? ' bm-ghost' : ''),
+						+ (ghost ? ' bm-ghost' : '') + (!this.edit && !this.linkSources(l).length ? ' bm-link-static' : ''),
 					'data-role': 'link',
 					'data-id': l.id
 				}, this.gLinks);
@@ -2038,6 +2041,7 @@
 			if (!this.edit) {
 				d.type = 'click';
 				d.target = role === 'node' ? t.dataset.id : null;
+				d.link = role === 'link' || role === 'label' ? t.dataset.id : null;
 
 				return;
 			}
@@ -2411,6 +2415,9 @@
 					}
 					else if (n && OBJECT_TYPES[n.type]) {
 						this.showPopup(n, e);
+					}
+					else if (d.link && this.linkSources(this.link(d.link)).length) {
+						this.showLinkPopup(this.link(d.link), e);
 					}
 					else {
 						this.hidePopup();
@@ -2851,6 +2858,7 @@
 
 		showPopup(n, e) {
 			this.popupNode = n;
+			this.popupLink = null;
 
 			const kind = OBJECT_TYPES[n.type];
 			const st = this.objStatus(n);
@@ -2940,6 +2948,13 @@
 				n.url ? htmlEl('a', {href: n.url, text: 'Lien'}) : null
 			]));
 
+			this.placePopup(e);
+		}
+
+		// Affiche le popup près du clic e (ou à sa dernière position quand il est rafraîchi).
+		placePopup(e) {
+			const p = this.popup;
+
 			p.hidden = false;
 
 			if (e) {
@@ -2954,6 +2969,146 @@
 
 			p.style.left = x + 'px';
 			p.style.top = y + 'px';
+		}
+
+		// Objets Zabbix dont dépend le statut d'un lien : [{trigger}] en mode déclencheurs, [{node}] sinon.
+		linkSources(l) {
+			if (!l || l.status === 'none') {
+				return [];
+			}
+
+			if (l.status === 'triggers') {
+				return l.triggers.map(t => ({trigger: t}));
+			}
+
+			const ends = {from: [l.from], to: [l.to], both: [l.from, l.to]}[l.status] || [];
+
+			return ends.map(id => this.node(id))
+				.filter(n => n && OBJECT_TYPES[n.type] && n[OBJECT_TYPES[n.type].field])
+				.map(n => ({node: n}));
+		}
+
+		showLinkPopup(l, e) {
+			this.popupNode = null;
+			this.popupLink = l.id;
+
+			const p = this.popup;
+			const a = this.node(l.from), b = this.node(l.to);
+			const ends = this.nodeLabel(a) + ' ↔ ' + this.nodeLabel(b);
+			const sources = this.linkSources(l);
+			const byTriggers = l.status === 'triggers';
+
+			p.textContent = '';
+			p.append(htmlEl('div', {class: 'bm-popup-title', text: l.label ? l.label.replace(/\n/g, ' ') : ends}));
+
+			if (l.label) {
+				p.append(htmlEl('div', {class: 'bm-popup-sub', text: ends}));
+			}
+
+			if (this.statusLoaded) {
+				const sev = this.linkSeverity(l);
+
+				p.append(htmlEl('div', {class: 'bm-popup-value'}, sev >= 0
+					? [htmlEl('span', {class: 'bm-sev', style: 'background:' + SEVERITIES[sev].color}),
+						htmlEl('span', {text: 'En problème · ' + SEVERITIES[sev].name})]
+					: [htmlEl('span', {class: 'bm-sev', style: 'background:' + OK_COLOR}), htmlEl('span', {text: 'OK'})]));
+			}
+
+			// Sources du statut, avec leur état.
+			p.append(htmlEl('div', {class: 'bm-popup-head', text: byTriggers
+				? (l.triggers.length > 1
+					? (l.triggerLogic === 'and' ? 'Tous ces déclencheurs (ET)' : 'Au moins un de ces déclencheurs (OU)')
+					: 'Déclencheur')
+				: 'Selon ' + (sources.length > 1 ? 'les extrémités' : 'l\'extrémité')}));
+
+			const list = htmlEl('ul', {class: 'bm-popup-problems bm-popup-sources'});
+			const problems = new Map();
+
+			for (const src of sources) {
+				let name, st, text, color;
+
+				if (src.trigger) {
+					st = this.triggerState(src.trigger.triggerid);
+					name = this.triggerText(src.trigger);
+					text = this.triggerStateText(src.trigger.triggerid);
+					(this.status.triggers[src.trigger.triggerid] || {problems: []}).problems
+						.forEach(pr => problems.set(pr.eventid, pr));
+				}
+				else {
+					st = this.nodeStatus(src.node);
+					name = this.nodeLabel(src.node);
+					text = {problem: () => SEVERITIES[st.severity].name + ' · ' + st.count + ' problème(s)', ok: () => 'OK',
+						maint: () => 'En maintenance', disabled: () => 'désactivé', unsupported: () => 'non supporté',
+						unknown: () => 'introuvable ou non autorisé', none: () => '…'}[st.state]();
+					(this.objStatus(src.node) || {problems: []}).problems.forEach(pr => problems.set(pr.eventid, pr));
+				}
+
+				color = st.state === 'problem' ? SEVERITIES[st.severity].color
+					: st.state === 'ok' ? OK_COLOR : st.state === 'maint' ? MAINT_COLOR : null;
+				list.append(htmlEl('li', {}, [
+					htmlEl('span', {class: 'bm-sev' + (color ? '' : ' bm-sev-none'), style: color ? 'background:' + color : null}),
+					htmlEl('span', {class: 'bm-pname', text: name}),
+					htmlEl('span', {class: 'bm-page', text})
+				]));
+			}
+
+			p.append(list);
+
+			// Problèmes actifs de toutes les sources, sans doublon.
+			const all = [...problems.values()].sort((x, y) => y.severity - x.severity || y.clock - x.clock);
+
+			if (all.length) {
+				p.append(htmlEl('div', {class: 'bm-popup-head', text: 'Problèmes'}));
+
+				const pl = htmlEl('ul', {class: 'bm-popup-problems'});
+
+				all.slice(0, 15).forEach(pr => pl.append(htmlEl('li', {}, [
+					htmlEl('span', {class: 'bm-sev', style: 'background:' + SEVERITIES[pr.severity].color,
+						title: SEVERITIES[pr.severity].name}),
+					htmlEl('span', {class: 'bm-pname', text: pr.host + ' : ' + pr.name}),
+					htmlEl('span', {class: 'bm-page', text: formatAge(pr.clock) + (pr.acknowledged ? ' ✓' : '')})
+				])));
+				p.append(pl);
+
+				if (all.length > 15) {
+					p.append(htmlEl('div', {class: 'bm-popup-empty', text: '… et ' + (all.length - 15) + ' autres'}));
+				}
+			}
+			else if (this.statusLoaded) {
+				p.append(htmlEl('div', {class: 'bm-popup-ok', text: 'Aucun problème'}));
+			}
+
+			// Liens vers Zabbix : regroupés pour les déclencheurs, par extrémité sinon.
+			if (byTriggers) {
+				p.append(htmlEl('div', {class: 'bm-popup-links'},
+					this.triggerLinks(l.triggers).map(([text, href]) => htmlEl('a', {href, text}))));
+			}
+			else {
+				for (const src of sources) {
+					p.append(htmlEl('div', {class: 'bm-popup-links'}, [
+						sources.length > 1 ? htmlEl('span', {class: 'bm-popup-links-label', text: this.nodeLabel(src.node)}) : null,
+						...this.popupLinks(src.node, this.objStatus(src.node)).map(([text, href]) => htmlEl('a', {href, text}))
+					]));
+				}
+			}
+
+			this.placePopup(e);
+		}
+
+		// Pages Zabbix d'un ensemble de déclencheurs : problèmes, graphique de leurs items, dernières données des hôtes.
+		triggerLinks(triggers) {
+			const q = (key, ids) => ids.map(id => '&' + key + '%5B%5D=' + encodeURIComponent(id)).join('');
+			const live = triggers.map(t => this.status.triggers[t.triggerid]).filter(Boolean);
+			const itemids = [...new Set(live.flatMap(st => st.graph_itemids || []))];
+			const hostids = [...new Set(live.map(st => st.hostid).filter(Boolean))];
+
+			return [
+				['Problèmes', 'zabbix.php?action=problem.view&filter_set=1' + q('triggerids', triggers.map(t => t.triggerid))],
+				itemids.length ? ['Graphique', 'history.php?action=showgraph' + q('itemids', itemids)] : null,
+				hostids.length ? ['Dernières données', 'zabbix.php?action=latest.view&filter_set=1' + q('hostids', hostids)] : null,
+				hostids.length === 1 ? ['Graphiques de l\'hôte', 'zabbix.php?action=charts.view&filter_set=1'
+					+ q('filter_hostids', hostids)] : null
+			].filter(Boolean);
 		}
 
 		// Liens vers les pages Zabbix de l'objet : [texte, url].
@@ -3005,6 +3160,7 @@
 		hidePopup() {
 			this.popup.hidden = true;
 			this.popupNode = null;
+			this.popupLink = null;
 		}
 
 		/* ---------------- panneau de propriétés */

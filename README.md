@@ -13,7 +13,7 @@ Ce module frontend ajoute **Surveillance › Cartes+**, un éditeur de cartes in
 - liens colorés selon la sévérité des problèmes de leurs extrémités (hôte, groupe, item ou déclencheur), ou d'un ou plusieurs autres déclencheurs choisis pour le lien, combinés en OU (au moins un en problème) ou en ET (tous en problème) ;
 - zones (rectangles, ellipses) et textes libres, avec mise en forme du texte : police, taille, couleur, gras, italique, souligné, alignement horizontal (gauche, centre, droite) et vertical (haut, milieu, bas) ;
 - annuler/rétablir, copier/coller (y compris entre deux cartes), alignement et répartition, grille magnétique ;
-- mode visualisation : rafraîchissement automatique, popup des problèmes au clic, plein écran ;
+- mode visualisation : rafraîchissement automatique, popup au clic sur un nœud ou un lien (état, problèmes, liens vers les problèmes, graphiques et dernières données), plein écran ;
 - export et import JSON ;
 - compatible avec les thèmes clairs et sombres de Zabbix.
 

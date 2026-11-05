@@ -132,6 +132,7 @@ class Status {
 			$db_triggers = API::Trigger()->get([
 				'output' => ['triggerid', 'description', 'priority', 'value', 'status', 'state'],
 				'selectHosts' => ['hostid', 'name', 'status'],
+				'selectItems' => ['itemid', 'value_type'],
 				'triggerids' => $triggerids,
 				'expandDescription' => true,
 				'preservekeys' => true
@@ -148,6 +149,10 @@ class Status {
 					'unsupported' => $trigger['state'] == TRIGGER_STATE_UNKNOWN,
 					'disabled' => $trigger['status'] != TRIGGER_STATUS_ENABLED
 						|| $host['status'] == HOST_STATUS_NOT_MONITORED,
+					// Items numériques de l'expression, pour le graphique.
+					'graph_itemids' => array_values(array_column(array_filter($trigger['items'],
+						fn($item) => in_array($item['value_type'], [ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_UINT64])
+					), 'itemid')),
 					'problems' => []
 				];
 

@@ -353,6 +353,11 @@ html[color-scheme="dark"] .bm-root {
 	cursor: move;
 }
 
+/* visualisation : lien sans statut, rien à afficher au clic */
+.bm-link-static .bm-link-hit {
+	cursor: default;
+}
+
 .bm-link:hover .bm-link-line {
 	filter: drop-shadow(0 0 2px var(--bm-accent));
 }
@@ -565,6 +570,36 @@ html[color-scheme="dark"] .bm-root {
 	flex-wrap: wrap;
 	gap: 4px 12px;
 	margin-top: 8px;
+}
+
+/* popup d'un lien */
+
+.bm-popup-head {
+	margin: 8px 0 2px;
+	color: var(--bm-muted);
+	font-size: 11px;
+	font-weight: bold;
+	text-transform: uppercase;
+	letter-spacing: .03em;
+}
+
+.bm-popup-sources {
+	max-height: 140px;
+}
+
+.bm-sev-none {
+	border: 1px solid var(--bm-muted);
+	box-sizing: border-box;
+}
+
+.bm-popup-links-label {
+	width: 100%;
+	color: var(--bm-muted);
+	font-weight: bold;
+}
+
+.bm-popup-links + .bm-popup-links {
+	margin-top: 4px;
 }
 
 /* ---------- notifications */
