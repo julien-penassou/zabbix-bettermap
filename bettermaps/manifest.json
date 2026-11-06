@@ -45,6 +45,21 @@
 			"class": "MapStatus",
 			"layout": "layout.json"
 		},
+		"bettermap.icon": {
+			"class": "IconView"
+		},
+		"bettermap.icon.list": {
+			"class": "IconList",
+			"layout": "layout.json"
+		},
+		"bettermap.icon.upload": {
+			"class": "IconUpload",
+			"layout": "layout.json"
+		},
+		"bettermap.icon.delete": {
+			"class": "IconDelete",
+			"layout": "layout.json"
+		},
 		"widget.bettermaps.view": {
 			"class": "WidgetView"
 		}

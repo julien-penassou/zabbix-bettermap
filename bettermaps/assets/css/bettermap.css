@@ -924,6 +924,49 @@ div.bm-row-label {
 	cursor: pointer;
 }
 
+/* icônes personnalisées */
+.bm-icons-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin: 10px 0 4px;
+	color: var(--bm-muted);
+}
+
+.bm-icons-custom .bm-icon-btn {
+	position: relative;
+}
+
+.bm-icons-custom img {
+	max-width: 26px;
+	max-height: 26px;
+}
+
+.bm-icon-del {
+	position: absolute;
+	top: -6px;
+	right: -6px;
+	display: none;
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: #d64e4e;
+	color: #fff;
+	font-size: 12px;
+	line-height: 15px;
+	text-align: center;
+}
+
+.bm-icon-btn:hover .bm-icon-del {
+	display: block;
+}
+
+.bm-icons-empty {
+	grid-column: 1 / -1;
+	color: var(--bm-muted);
+	font-style: italic;
+}
+
 .bm-icon-none {
 	color: var(--bm-text);
 	font-size: 13px;

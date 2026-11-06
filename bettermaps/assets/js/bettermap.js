@@ -659,6 +659,29 @@
 		return s;
 	}
 
+	// Icônes personnalisées : n.icon vaut 'custom:<iconid>', l'image est servie par l'action bettermap.icon.
+	const CUSTOM_ICON = 'custom:';
+	const ICON_MAX_SIZE = 1024 * 1024;
+	const ICON_ACCEPT = '.svg,.png,.jpg,.jpeg,.gif,.webp,image/svg+xml,image/png,image/jpeg,image/gif,image/webp';
+
+	function customIconId(icon) {
+		return typeof icon === 'string' && icon.startsWith(CUSTOM_ICON) ? icon.slice(CUSTOM_ICON.length) : null;
+	}
+
+	function customIconUrl(iconid) {
+		return 'zabbix.php?action=bettermap.icon&iconid=' + encodeURIComponent(iconid);
+	}
+
+	function readDataUrl(file) {
+		return new Promise((resolve, reject) => {
+			const r = new FileReader();
+
+			r.onload = () => resolve(r.result);
+			r.onerror = () => reject(new Error('Lecture du fichier impossible.'));
+			r.readAsDataURL(file);
+		});
+	}
+
 	/* ------------------------------------------------------------------ éditeur */
 
 	class MapEditor {
@@ -685,6 +708,9 @@
 			// le rafraîchissement est piloté par le widget.
 			this.embedded = !!cfg.embedded;
 			this.listeners = [];
+			// Icônes personnalisées : liste chargée à la demande (éditeur), identifiants dont l'image n'a pas pu être lue.
+			this.customIcons = null;
+			this.brokenIcons = new Set();
 
 			if (this.embedded) {
 				this.cfg.canEdit = false;
@@ -1453,13 +1479,27 @@
 			}
 			else {
 				const s = Math.min(n.w, n.h) * 0.68;
-				const icon = svgEl('g', {class: 'bm-icon',
-					transform: `translate(${(n.w - s) / 2},${(n.h - s) / 2}) scale(${s / 48})`}, g);
+				const custom = customIconId(n.icon);
 
-				icon.innerHTML = (ICONS[n.icon] || ICONS.generic).svg;
+				if (custom && !this.brokenIcons.has(custom)) {
+					const img = svgEl('image', {class: 'bm-icon-img', href: customIconUrl(custom), x: (n.w - s) / 2,
+						y: (n.h - s) / 2, width: s, height: s, preserveAspectRatio: 'xMidYMid meet'}, g);
 
-				if (n.iconColor) {
-					icon.style.stroke = n.iconColor;
+					// Icône supprimée ou inaccessible : icône générique à la place.
+					img.addEventListener('error', () => {
+						this.brokenIcons.add(custom);
+						this.render();
+					}, {once: true});
+				}
+				else {
+					const icon = svgEl('g', {class: 'bm-icon',
+						transform: `translate(${(n.w - s) / 2},${(n.h - s) / 2}) scale(${s / 48})`}, g);
+
+					icon.innerHTML = (ICONS[n.icon] || ICONS.generic).svg;
+
+					if (n.iconColor) {
+						icon.style.stroke = n.iconColor;
+					}
 				}
 			}
 
@@ -3504,40 +3544,184 @@
 		}
 
 		iconPicker(n) {
-			const wrap = htmlEl('div', {class: 'bm-icons'});
+			const box = htmlEl('div', {class: 'bm-icon-picker'});
+			const grid = htmlEl('div', {class: 'bm-icons'});
+			const customGrid = htmlEl('div', {class: 'bm-icons bm-icons-custom'});
+			// Sans icône / icône intégrée / personnalisée : les réglages du panneau changent avec le genre.
+			const kind = () => isIconless(n) ? 'none' : customIconId(n.icon) ? 'custom' : 'builtin';
+
+			const select = (key, b) => {
+				const was = kind();
+
+				this.checkpoint();
+				n.icon = key;
+
+				// Sans icône, la boîte s'élargit pour contenir le libellé.
+				if (key === 'none' && was !== 'none') {
+					const lines = this.nodeLabel(n).split('\n');
+
+					n.w = Math.max(n.w, this.snap(Math.max(...lines.map(l => textWidth(l, n.fontSize, true))) + 24));
+					n.h = Math.max(n.h, this.snap(lines.length * n.fontSize * 1.2 + 16));
+				}
+
+				box.querySelectorAll('.bm-active').forEach(x => x.classList.remove('bm-active'));
+				b && b.classList.add('bm-active');
+				this.render();
+
+				// Emplacement du libellé et couleur d'icône dépendent du genre d'icône.
+				if (kind() !== was) {
+					this.renderPanel();
+				}
+			};
 
 			for (const key of ['none', ...Object.keys(ICONS)]) {
 				const b = htmlEl('button', {type: 'button', class: 'bm-icon-btn' + (n.icon === key ? ' bm-active' : ''),
 					title: key === 'none' ? 'Aucune icône : le libellé est écrit dans la boîte' : ICONS[key].name});
 
 				b.append(key === 'none' ? htmlEl('span', {class: 'bm-icon-none', text: 'Abc'}) : iconSvg(key, 26));
-				b.addEventListener('click', () => {
-					const was = isIconless(n);
-
-					this.checkpoint();
-					n.icon = key;
-
-					// Sans icône, la boîte s'élargit pour contenir le libellé.
-					if (key === 'none' && !was) {
-						const lines = this.nodeLabel(n).split('\n');
-
-						n.w = Math.max(n.w, this.snap(Math.max(...lines.map(l => textWidth(l, n.fontSize, true))) + 24));
-						n.h = Math.max(n.h, this.snap(lines.length * n.fontSize * 1.2 + 16));
-					}
-
-					wrap.querySelectorAll('.bm-active').forEach(x => x.classList.remove('bm-active'));
-					b.classList.add('bm-active');
-					this.render();
-
-					// Emplacement du libellé et couleur d'icône n'ont de sens qu'avec une icône.
-					if (isIconless(n) !== was) {
-						this.renderPanel();
-					}
-				});
-				wrap.append(b);
+				b.addEventListener('click', () => select(key, b));
+				grid.append(b);
 			}
 
-			return wrap;
+			const file = htmlEl('input', {type: 'file', accept: ICON_ACCEPT, multiple: true, hidden: true});
+
+			file.addEventListener('change', () => {
+				const files = [...file.files];
+
+				file.value = '';
+				this.uploadIcons(files).then(icon => {
+					if (icon) {
+						select(CUSTOM_ICON + icon.iconid, null);
+					}
+
+					this.fillCustomIcons(customGrid, n, select);
+				});
+			});
+
+			box.append(grid,
+				htmlEl('div', {class: 'bm-icons-head'}, [
+					htmlEl('span', {text: 'Icônes personnalisées'}),
+					htmlEl('button', {type: 'button', class: 'btn-alt bm-mini-btn', text: '+ Ajouter',
+						title: 'SVG, PNG, JPEG, GIF ou WebP, 1 Mo au maximum', onclick: () => file.click()}),
+					file
+				]),
+				customGrid
+			);
+			this.fillCustomIcons(customGrid, n, select);
+
+			return box;
+		}
+
+		// Remplit la grille des icônes personnalisées (liste chargée une seule fois par éditeur).
+		fillCustomIcons(grid, n, select) {
+			if (this.customIcons === null) {
+				grid.textContent = '';
+				grid.append(htmlEl('div', {class: 'bm-icons-empty', text: 'Chargement…'}));
+				this.loadingIcons = this.loadingIcons || post('bettermap.icon.list', {})
+					.then(res => {
+						if (res.error) {
+							throw new Error(res.error);
+						}
+
+						this.customIcons = res.icons || [];
+					})
+					.catch(err => {
+						this.customIcons = [];
+						this.notify(err.message, true);
+					});
+				this.loadingIcons.then(() => grid.isConnected && this.fillCustomIcons(grid, n, select));
+
+				return;
+			}
+
+			grid.textContent = '';
+
+			if (!this.customIcons.length) {
+				grid.append(htmlEl('div', {class: 'bm-icons-empty', text: 'Aucune pour l\'instant.'}));
+			}
+
+			for (const icon of this.customIcons) {
+				const key = CUSTOM_ICON + icon.iconid;
+				const b = htmlEl('button', {type: 'button', class: 'bm-icon-btn' + (n.icon === key ? ' bm-active' : ''),
+					title: icon.name}, [htmlEl('img', {src: customIconUrl(icon.iconid), alt: icon.name})]);
+				const del = htmlEl('span', {class: 'bm-icon-del', title: 'Supprimer cette icône', text: '×'});
+
+				del.addEventListener('click', e => {
+					e.stopPropagation();
+					this.deleteIcon(icon).then(done => done && this.fillCustomIcons(grid, n, select));
+				});
+				b.append(del);
+				b.addEventListener('click', () => select(key, b));
+				grid.append(b);
+			}
+		}
+
+		// Envoie les fichiers un par un ; résout avec la dernière icône ajoutée (ou null).
+		async uploadIcons(files) {
+			let last = null;
+
+			for (const f of files) {
+				if (f.size > ICON_MAX_SIZE) {
+					this.notify('« ' + f.name + ' » dépasse 1 Mo.', true);
+					continue;
+				}
+
+				try {
+					const res = await post('bettermap.icon.upload', {
+						[this.cfg.csrfName]: this.cfg.csrf,
+						name: f.name.replace(/\.[^.]+$/, '') || f.name,
+						data: await readDataUrl(f)
+					});
+
+					if (res.error) {
+						throw new Error(res.error);
+					}
+
+					this.customIcons = (this.customIcons || []).concat(res.icon)
+						.sort((a, b) => a.name.localeCompare(b.name));
+					this.brokenIcons.delete(res.icon.iconid);
+					last = res.icon;
+				}
+				catch (err) {
+					this.notify('« ' + f.name + ' » : ' + err.message, true);
+				}
+			}
+
+			if (last) {
+				this.notify(files.length > 1 ? 'Icônes ajoutées.' : 'Icône ajoutée.');
+			}
+
+			return last;
+		}
+
+		// Supprime une icône personnalisée pour toutes les cartes ; résout avec true si c'est fait.
+		deleteIcon(icon) {
+			const key = CUSTOM_ICON + icon.iconid;
+			const here = this.doc.nodes.filter(x => x.icon === key).length;
+
+			if (!confirm('Supprimer l\'icône « ' + icon.name + ' » ?\n\n'
+					+ (here ? here + ' nœud(s) de cette carte l\'utilise(nt). ' : '')
+					+ 'Sur toutes les cartes, les nœuds qui l\'utilisent afficheront l\'icône générique.')) {
+				return Promise.resolve(false);
+			}
+
+			return post('bettermap.icon.delete', {[this.cfg.csrfName]: this.cfg.csrf, iconid: icon.iconid})
+				.then(res => {
+					if (res.error) {
+						throw new Error(res.error);
+					}
+
+					this.customIcons = this.customIcons.filter(x => x.iconid !== icon.iconid);
+					this.brokenIcons.add(icon.iconid);
+					this.render();
+
+					return true;
+				})
+				.catch(err => {
+					this.notify(err.message, true);
+
+					return false;
+				});
 		}
 
 		panelNode(n) {
@@ -3645,7 +3829,8 @@
 			this.row(s2, 'Fond', this.colorField(n, 'fill', n.type === 'shape' ? '#f3f6f9' : '#ffffff'));
 			this.row(s2, 'Bordure', this.colorField(n, 'stroke', '#9aa7b4'));
 
-			if (isDevice(n) && !isIconless(n)) {
+			// Une image personnalisée garde ses couleurs.
+			if (isDevice(n) && !isIconless(n) && !customIconId(n.icon)) {
 				this.row(s2, 'Icône', this.colorField(n, 'iconColor', '#40525e'));
 			}
 
