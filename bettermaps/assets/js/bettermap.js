@@ -49,14 +49,18 @@
 		gridSize: 10,
 		background: '',
 		refresh: 30,
-		linkStyle: 'curve'
+		linkStyle: 'curve',
+		labelPos: 'bottom'
 	};
+
+	// Emplacements du libellé d'un hôte ou d'un groupe ('' : celui de la carte).
+	const LABEL_POSITIONS = {bottom: 'En bas', top: 'En haut', left: 'À gauche', right: 'À droite'};
 
 	const NODE_DEFAULTS = {
 		host: {w: 56, h: 56, label: '', hostid: '', hostname: '', icon: 'server', shape: 'round', fill: '', stroke: '',
-			color: '', iconColor: '', fontSize: 12, url: ''},
+			color: '', iconColor: '', fontSize: 12, url: '', labelPos: ''},
 		group: {w: 56, h: 56, label: '', groupid: '', groupname: '', icon: 'group', shape: 'round', fill: '', stroke: '',
-			color: '', iconColor: '', fontSize: 12, url: ''},
+			color: '', iconColor: '', fontSize: 12, url: '', labelPos: ''},
 		item: {w: 150, h: 54, label: '', hostid: '', hostname: '', itemid: '', itemname: '', shape: 'round', fill: '',
 			stroke: '', color: '', fontSize: 13, url: ''},
 		trigger: {w: 180, h: 54, label: '', hostid: '', hostname: '', triggerid: '', triggername: '', shape: 'round',
@@ -285,6 +289,10 @@
 		};
 		const ids = new Set();
 
+		if (!LABEL_POSITIONS[doc.settings.labelPos]) {
+			doc.settings.labelPos = MAP_DEFAULTS.labelPos;
+		}
+
 		for (const n of Array.isArray(data.nodes) ? data.nodes : []) {
 			if (!isObj(n)) {
 				continue;
@@ -307,6 +315,10 @@
 			node.h = Math.max(8, num(node.h, defs.h));
 			node.fontSize = clamp(num(node.fontSize, defs.fontSize), 6, 96);
 			node.label = String(node.label ?? '');
+
+			if (isDevice(node)) {
+				node.labelPos = LABEL_POSITIONS[node.labelPos] ? node.labelPos : '';
+			}
 
 			if (hasTextStyle(node)) {
 				// Anciennes zones : valign valait topleft / top / middle / bottom, sans alignement horizontal.
@@ -377,9 +389,12 @@
 		return n.type !== 'text' && n.shape === 'ellipse';
 	}
 
+	// Marges {t, r, b, l} autour d'un nœud : place occupée par le libellé d'un hôte ou d'un groupe,
+	// que les liens contournent (ils s'arrêtent au-delà du nom).
+	const NO_MARGIN = {t: 0, r: 0, b: 0, l: 0};
+
 	// Point du bord du nœud situé sur la droite centre -> cible.
-	// extra_bottom : hauteur du libellé sous l'icône d'un hôte (le lien s'arrête sous le nom).
-	function borderPoint(n, toward, extra_bottom = 0) {
+	function borderPoint(n, toward, m = NO_MARGIN) {
 		const c = center(n);
 		const dx = toward.x - c.x, dy = toward.y - c.y;
 		const gap = 2;
@@ -396,7 +411,8 @@
 			s = 1 / Math.sqrt((dx * dx) / (hw * hw) + (dy * dy) / (hh * hh));
 		}
 		else {
-			const left = n.w / 2 + gap, right = left, top = n.h / 2 + gap, bottom = top + extra_bottom;
+			const left = n.w / 2 + gap + m.l, right = n.w / 2 + gap + m.r;
+			const top = n.h / 2 + gap + m.t, bottom = n.h / 2 + gap + m.b;
 
 			s = Math.min(
 				dx > 0 ? right / dx : dx < 0 ? -left / dx : Infinity,
@@ -449,8 +465,8 @@
 		return [{x: -1, y: 0}, {x: 1, y: 0}, {x: 0, y: -1}, {x: 0, y: 1}][side];
 	}
 
-	// Position du point de connexion. Sous un hôte, les points du bas passent sous le libellé.
-	function portPoint(n, port, extra_bottom = 0, gap = 2) {
+	// Position du point de connexion. Du côté du libellé d'un hôte, les points passent au-delà du libellé.
+	function portPoint(n, port, m = NO_MARGIN, gap = 2) {
 		let px = port.x, py = port.y;
 
 		if (isEllipse(n)) {
@@ -463,8 +479,8 @@
 		const nm = portNormal(n, port);
 
 		return {
-			x: n.x + px * n.w + nm.x * gap,
-			y: n.y + py * n.h + nm.y * gap + (py > 0.999 ? extra_bottom : 0)
+			x: n.x + px * n.w + nm.x * gap + (px < 0.001 ? -m.l : px > 0.999 ? m.r : 0),
+			y: n.y + py * n.h + nm.y * gap + (py < 0.001 ? -m.t : py > 0.999 ? m.b : 0)
 		};
 	}
 
@@ -618,6 +634,16 @@
 
 		return drawText(parent, n.label, x, y, {size: n.fontSize, color: n.color, anchor: {left: 'start', right: 'end'}[n.align],
 			valign: n.valign, style: n, cls});
+	}
+
+	// Largeur approchée d'une ligne de libellé (police de l'interface), pour réserver sa place.
+	let measureCtx = null;
+
+	function textWidth(text, size, bold) {
+		measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+		measureCtx.font = (bold ? 'bold ' : '') + size + 'px Arial, Tahoma, Verdana, sans-serif';
+
+		return measureCtx.measureText(text).width;
 	}
 
 	function iconSvg(icon, size) {
@@ -1425,7 +1451,13 @@
 			const label = this.nodeLabel(n);
 
 			if (label) {
-				drawText(g, label, n.w / 2, n.h + 5, {size: n.fontSize, color: n.color, cls: 'bm-label bm-host-label'});
+				const [x, y, anchor, valign] = {
+					top: [n.w / 2, -5, 'middle', 'bottom'],
+					left: [-6, n.h / 2, 'end', 'middle'],
+					right: [n.w + 6, n.h / 2, 'start', 'middle']
+				}[this.labelPosition(n)] || [n.w / 2, n.h + 5, 'middle', 'top'];
+
+				drawText(g, label, x, y, {size: n.fontSize, color: n.color, anchor, valign, cls: 'bm-label bm-host-label'});
 			}
 
 			this.renderBadges(g, n, st, sevColor);
@@ -1542,9 +1574,9 @@
 
 		// Extrémité d'un lien orthogonal : point fixe, ou milieu du côté tourné vers la cible
 		// (glissé le long du côté pour rester aligné quand c'est possible).
-		orthoEnd(n, port, extra, t) {
+		orthoEnd(n, port, m, t) {
 			if (port) {
-				return {p: portPoint(n, port, extra), d: axisDir(portNormal(n, port))};
+				return {p: portPoint(n, port, m), d: axisDir(portNormal(n, port))};
 			}
 
 			const c = center(n), dx = t.x - c.x, dy = t.y - c.y, gap = 2;
@@ -1554,13 +1586,13 @@
 				const s = dx >= 0 ? 1 : -1;
 				const y = slide && t.y > n.y + 4 && t.y < n.y + n.h - 4 ? t.y : c.y;
 
-				return {p: {x: s > 0 ? n.x + n.w + gap : n.x - gap, y}, d: {x: s, y: 0}};
+				return {p: {x: s > 0 ? n.x + n.w + m.r + gap : n.x - m.l - gap, y}, d: {x: s, y: 0}};
 			}
 
 			const s = dy >= 0 ? 1 : -1;
 			const x = slide && t.x > n.x + 4 && t.x < n.x + n.w - 4 ? t.x : c.x;
 
-			return {p: {x, y: s > 0 ? n.y + n.h + extra + gap : n.y - gap}, d: {x: 0, y: s}};
+			return {p: {x, y: s > 0 ? n.y + n.h + m.b + gap : n.y - m.t - gap}, d: {x: 0, y: s}};
 		}
 
 		// Tracé orthogonal : départs perpendiculaires, passage par les points (coins) du lien,
@@ -1615,10 +1647,29 @@
 			return simplifyOrtho(P);
 		}
 
+		// Emplacement du libellé d'un hôte ou d'un groupe : celui du nœud, sinon celui de la carte.
+		labelPosition(n) {
+			return n.labelPos || this.doc.settings.labelPos || 'bottom';
+		}
+
+		// Marges {t, r, b, l} occupées par le libellé d'un hôte ou d'un groupe (voir NO_MARGIN).
 		labelExtent(n) {
 			const label = isDevice(n) ? this.nodeLabel(n) : '';
 
-			return label ? label.split('\n').length * n.fontSize * 1.2 + 6 : 0;
+			if (!label) {
+				return NO_MARGIN;
+			}
+
+			const lines = label.split('\n');
+			const pos = this.labelPosition(n);
+
+			if (pos === 'left' || pos === 'right') {
+				const w = Math.max(...lines.map(line => textWidth(line, n.fontSize, true))) + 8;
+
+				return Object.assign({}, NO_MARGIN, {[pos === 'left' ? 'l' : 'r']: w});
+			}
+
+			return Object.assign({}, NO_MARGIN, {[pos === 'top' ? 't' : 'b']: lines.length * n.fontSize * 1.2 + 6});
 		}
 
 		segmentIndex(geom, p) {
@@ -1907,10 +1958,12 @@
 			let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
 
 			for (const n of this.doc.nodes) {
-				x1 = Math.min(x1, n.x);
-				y1 = Math.min(y1, n.y);
-				x2 = Math.max(x2, n.x + n.w);
-				y2 = Math.max(y2, n.y + n.h + (isDevice(n) ? n.fontSize * 1.5 + 6 : 0));
+				const m = this.labelExtent(n);
+
+				x1 = Math.min(x1, n.x - m.l);
+				y1 = Math.min(y1, n.y - m.t);
+				x2 = Math.max(x2, n.x + n.w + m.r);
+				y2 = Math.max(y2, n.y + n.h + m.b);
 			}
 
 			for (const l of this.doc.links) {
@@ -1949,8 +2002,9 @@
 
 			for (let i = order.length - 1; i >= 0; i--) {
 				const n = order[i];
+				const m = this.labelExtent(n);
 
-				if (p.x >= n.x - 4 && p.x <= n.x + n.w + 4 && p.y >= n.y - 4 && p.y <= n.y + n.h + this.labelExtent(n) + 4) {
+				if (p.x >= n.x - m.l - 4 && p.x <= n.x + n.w + m.r + 4 && p.y >= n.y - m.t - 4 && p.y <= n.y + n.h + m.b + 4) {
 					return n;
 				}
 			}
@@ -3511,6 +3565,13 @@
 			}));
 
 			if (isDevice(n)) {
+				const def = LABEL_POSITIONS[this.doc.settings.labelPos].toLowerCase();
+
+				this.row(s1, 'Emplacement', this.selectField(n, 'labelPos', {'': 'Par défaut (' + def + ')',
+					bottom: 'En bas', left: 'À gauche', right: 'À droite', top: 'En haut'}));
+			}
+
+			if (isDevice(n)) {
 				const s = this.section('Icône');
 
 				s.append(this.iconPicker(n));
@@ -3827,6 +3888,7 @@
 			this.row(s1, 'Fond', this.colorField(st, 'background', '#ffffff'));
 			this.row(s1, 'Liens par défaut', this.selectField(st, 'linkStyle', {curve: 'Courbe', straight: 'Droit',
 				orthogonal: 'Orthogonal'}));
+			this.row(s1, 'Libellés des hôtes', this.selectField(st, 'labelPos', LABEL_POSITIONS));
 			this.row(s1, 'Rafraîchir (s)', this.bind(htmlEl('input', {type: 'number', value: st.refresh, min: 10, max: 3600,
 				class: 'bm-num'}), 'change', el => {
 				st.refresh = clamp(parseInt(el.value, 10) || 30, 10, 3600);
