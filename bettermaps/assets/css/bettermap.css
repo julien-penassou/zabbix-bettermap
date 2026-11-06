@@ -245,6 +245,11 @@ html[color-scheme="dark"] .bm-root {
 	stroke-linejoin: round;
 }
 
+/* hôte ou groupe sans icône : libellé dans la boîte */
+.bm-device-text {
+	font-weight: bold;
+}
+
 .bm-text-hit {
 	fill: transparent;
 	stroke: none;
@@ -919,8 +924,16 @@ div.bm-row-label {
 	cursor: pointer;
 }
 
-.bm-icon-btn:hover {
+.bm-icon-none {
+	color: var(--bm-text);
+	font-size: 13px;
+	font-weight: bold;
+}
+
+.bm-icon-btn:hover,
+.bm-icon-btn:focus {
 	border-color: var(--bm-accent);
+	background: var(--bm-bg);
 }
 
 .bm-icon-btn.bm-active {

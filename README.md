@@ -7,7 +7,7 @@ Ce module frontend ajoute **Surveillance › Cartes+**, un éditeur de cartes in
 - points de passage déplaçables (aimantés sur l'alignement de leurs voisins), extrémités reconnectables d'un nœud à un autre, libellé déplaçable le long du lien ;
 - liens parallèles (LACP, redondance) écartés automatiquement ;
 - hôtes Zabbix avec icônes vectorielles, pastille de statut et halo pulsant pour les problèmes Haut et Désastre ;
-- libellé des hôtes et des groupes en bas, en haut, à gauche ou à droite (réglage par nœud, ou par défaut pour toute la carte), contourné par les liens ;
+- libellé des hôtes et des groupes en bas, en haut, à gauche ou à droite (réglage par nœud, ou par défaut pour toute la carte), contourné par les liens ; ou pas d'icône du tout, le libellé étant alors écrit dans la boîte ;
 - groupes d'hôtes : statut cumulé des hôtes surveillés du groupe (sévérité la plus haute, nombre de problèmes, hôtes en problème) ;
 - items : dernière valeur affichée en direct (unités et tables de correspondance appliquées), statut d'après les déclencheurs de l'item ;
 - déclencheurs : état OK / PROBLÈME aux couleurs de la sévérité, problèmes actifs au clic ;

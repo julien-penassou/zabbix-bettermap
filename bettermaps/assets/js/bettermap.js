@@ -117,6 +117,11 @@
 		return n.type === 'host' || n.type === 'group';
 	}
 
+	// Hôte ou groupe sans icône (icon 'none') : le libellé est écrit dans la boîte.
+	function isIconless(n) {
+		return isDevice(n) && n.icon === 'none';
+	}
+
 	// Items et déclencheurs : objets d'un hôte, choisis en deux temps (l'hôte, puis l'objet), affichés en boîte.
 	function isHostChild(n) {
 		return n.type === 'item' || n.type === 'trigger';
@@ -1438,19 +1443,27 @@
 		renderDevice(g, n) {
 			const st = this.nodeStatus(n);
 			const sevColor = this.renderStatusBody(g, n, st);
-			const s = Math.min(n.w, n.h) * 0.68;
-			const icon = svgEl('g', {class: 'bm-icon',
-				transform: `translate(${(n.w - s) / 2},${(n.h - s) / 2}) scale(${s / 48})`}, g);
-
-			icon.innerHTML = (ICONS[n.icon] || ICONS.generic).svg;
-
-			if (n.iconColor) {
-				icon.style.stroke = n.iconColor;
-			}
-
 			const label = this.nodeLabel(n);
 
-			if (label) {
+			if (isIconless(n)) {
+				if (label) {
+					drawText(g, label, n.w / 2, n.h / 2, {size: n.fontSize, color: n.color, valign: 'middle',
+						cls: 'bm-label bm-device-text'});
+				}
+			}
+			else {
+				const s = Math.min(n.w, n.h) * 0.68;
+				const icon = svgEl('g', {class: 'bm-icon',
+					transform: `translate(${(n.w - s) / 2},${(n.h - s) / 2}) scale(${s / 48})`}, g);
+
+				icon.innerHTML = (ICONS[n.icon] || ICONS.generic).svg;
+
+				if (n.iconColor) {
+					icon.style.stroke = n.iconColor;
+				}
+			}
+
+			if (label && !isIconless(n)) {
 				const [x, y, anchor, valign] = {
 					top: [n.w / 2, -5, 'middle', 'bottom'],
 					left: [-6, n.h / 2, 'end', 'middle'],
@@ -1654,7 +1667,7 @@
 
 		// Marges {t, r, b, l} occupées par le libellé d'un hôte ou d'un groupe (voir NO_MARGIN).
 		labelExtent(n) {
-			const label = isDevice(n) ? this.nodeLabel(n) : '';
+			const label = isDevice(n) && !isIconless(n) ? this.nodeLabel(n) : '';
 
 			if (!label) {
 				return NO_MARGIN;
@@ -3493,17 +3506,33 @@
 		iconPicker(n) {
 			const wrap = htmlEl('div', {class: 'bm-icons'});
 
-			for (const [key, icon] of Object.entries(ICONS)) {
+			for (const key of ['none', ...Object.keys(ICONS)]) {
 				const b = htmlEl('button', {type: 'button', class: 'bm-icon-btn' + (n.icon === key ? ' bm-active' : ''),
-					title: icon.name});
+					title: key === 'none' ? 'Aucune icône : le libellé est écrit dans la boîte' : ICONS[key].name});
 
-				b.append(iconSvg(key, 26));
+				b.append(key === 'none' ? htmlEl('span', {class: 'bm-icon-none', text: 'Abc'}) : iconSvg(key, 26));
 				b.addEventListener('click', () => {
+					const was = isIconless(n);
+
 					this.checkpoint();
 					n.icon = key;
+
+					// Sans icône, la boîte s'élargit pour contenir le libellé.
+					if (key === 'none' && !was) {
+						const lines = this.nodeLabel(n).split('\n');
+
+						n.w = Math.max(n.w, this.snap(Math.max(...lines.map(l => textWidth(l, n.fontSize, true))) + 24));
+						n.h = Math.max(n.h, this.snap(lines.length * n.fontSize * 1.2 + 16));
+					}
+
 					wrap.querySelectorAll('.bm-active').forEach(x => x.classList.remove('bm-active'));
 					b.classList.add('bm-active');
 					this.render();
+
+					// Emplacement du libellé et couleur d'icône n'ont de sens qu'avec une icône.
+					if (isIconless(n) !== was) {
+						this.renderPanel();
+					}
 				});
 				wrap.append(b);
 			}
@@ -3564,7 +3593,7 @@
 					item: 'Nom de l\'item par défaut', trigger: 'Nom du déclencheur par défaut'}[n.type] || ''
 			}));
 
-			if (isDevice(n)) {
+			if (isDevice(n) && !isIconless(n)) {
 				const def = LABEL_POSITIONS[this.doc.settings.labelPos].toLowerCase();
 
 				this.row(s1, 'Emplacement', this.selectField(n, 'labelPos', {'': 'Par défaut (' + def + ')',
@@ -3616,7 +3645,7 @@
 			this.row(s2, 'Fond', this.colorField(n, 'fill', n.type === 'shape' ? '#f3f6f9' : '#ffffff'));
 			this.row(s2, 'Bordure', this.colorField(n, 'stroke', '#9aa7b4'));
 
-			if (isDevice(n)) {
+			if (isDevice(n) && !isIconless(n)) {
 				this.row(s2, 'Icône', this.colorField(n, 'iconColor', '#40525e'));
 			}
 
