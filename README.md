@@ -21,6 +21,8 @@ Ce module frontend ajoute **Surveillance › Cartes+**, un éditeur de cartes in
 
 Le même module fournit aussi le widget **Carte+**, qui affiche ces cartes dans un tableau de bord.
 
+📖 **[Guide utilisateur](docs/guide-utilisateur.md)** : consulter, créer et modifier les cartes, pas à pas et avec captures d'écran.
+
 ## Installation
 
 1. Copier le dossier `bettermaps/` dans le dossier `modules/` du frontend Zabbix :
