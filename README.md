@@ -107,3 +107,13 @@ bettermaps/
 ```
 
 Zabbix ne charge le JS et le CSS d'un module de type widget que sur les tableaux de bord. Les pages Cartes+ les incluent donc elles-mêmes (voir `lib/Assets.php`). Les autres pages de Zabbix ne chargent pas l'éditeur.
+
+## Licence
+
+Copyright (C) 2026 Julien Penassou
+
+Better Maps est un logiciel libre, distribué sous la licence **GNU Affero General Public License version 3** (AGPL-3.0), la même que Zabbix. Le texte complet se trouve dans le fichier [LICENSE](LICENSE).
+
+Vous pouvez utiliser, étudier, modifier et redistribuer ce module. Toute version modifiée, qu'elle soit redistribuée ou mise à disposition sur un serveur, doit être publiée sous la même licence, avec son code source.
+
+Ce module est fourni sans aucune garantie.
