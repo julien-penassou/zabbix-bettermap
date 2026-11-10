@@ -2611,7 +2611,26 @@
 					this.render();
 				}
 			}
-			else if (['node', 'link', 'label', 'oseg'].includes(t.dataset.role)) {
+			else if (t.dataset.role === 'oseg') {
+				// Orthogonal : on retire les deux coins du segment, le tracé se raccorde entre les coins voisins.
+				const l = this.selectedLinks()[0], geom = l && this.geom[l.id];
+
+				if (geom && geom.ortho) {
+					const i = +t.dataset.index;
+
+					this.checkpoint();
+					l.points = geom.ortho.slice(1, -1).map(p => ({x: p.x, y: p.y}));
+					l.points.splice(i - 1, 2);
+
+					// Il ne reste que les départs des extrémités : retour au tracé automatique.
+					if (l.points.length <= 2) {
+						l.points = [];
+					}
+
+					this.render();
+				}
+			}
+			else if (['node', 'link', 'label'].includes(t.dataset.role)) {
 				// Double-clic sur un nœud ou un lien : édition du libellé.
 				const field = this.panel.querySelector('[data-focus]');
 
@@ -4028,7 +4047,7 @@
 				['Supprimer', () => this.deleteSelection(), 'bm-danger']
 			]);
 			s4.append(htmlEl('div', {class: 'bm-hint', text: l.style === 'orthogonal'
-				? 'Glissez une poignée de segment pour le décaler. « Redresser » relance le tracé automatique. '
+				? 'Glissez une poignée de segment pour le décaler, double-cliquez-la pour le supprimer. « Redresser » relance le tracé automatique. '
 					+ 'Le libellé se déplace le long du lien.'
 				: 'Glissez le lien pour le courber. Double-clic sur un point pour le retirer. Le libellé se déplace '
 					+ 'le long du lien.'}));

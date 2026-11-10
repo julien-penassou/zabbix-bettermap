@@ -61,6 +61,7 @@ Au premier affichage, le module crée une table `bettermaps_map` dans la base Za
 | Tirer la poignée d'un segment orthogonal | décaler ce segment parallèlement à lui-même |
 | Tirer le libellé d'un lien | le déplacer le long du lien |
 | Double-clic sur un point | le supprimer |
+| Double-clic sur la poignée d'un segment orthogonal | supprimer ce décrochement (ses deux coins) |
 | Double-clic sur un lien ou un nœud | modifier son libellé |
 | Tirer une extrémité d'un lien sélectionné | la reconnecter (point fixe ou flottante) |
 | Glisser dans le vide (Maj pour ajouter) | sélection rectangulaire |

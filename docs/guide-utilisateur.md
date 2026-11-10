@@ -272,7 +272,7 @@ Le champ **Tracé** propose trois formes :
 
 - **Courbe** : un trait souple. Tirez le lien avec la souris pour le courber ;
 - **Droit** : une ligne droite. Tirez-le pour ajouter un coude ;
-- **Orthogonal** : uniquement des segments horizontaux et verticaux, tracés automatiquement. Tirez la poignée au milieu d'un segment pour le décaler.
+- **Orthogonal** : uniquement des segments horizontaux et verticaux, tracés automatiquement. Tirez la poignée au milieu d'un segment pour le décaler, double-cliquez-la pour supprimer ce décrochement.
 
 Pour les liens droits et orthogonaux, **Coins arrondis** adoucit les angles.
 
@@ -391,6 +391,7 @@ Pour dupliquer une carte : créez une carte vide, puis importez-y le fichier exp
 | Espace + glisser, ou clic droit + glisser | faire défiler la carte |
 | Double-clic sur un élément ou un lien | modifier son libellé |
 | Double-clic sur un point de passage | le supprimer |
+| Double-clic sur la poignée d'un segment orthogonal | supprimer ce décrochement |
 | Tirer depuis un point bleu | créer un lien |
 | Flèches (Maj : par 10) | déplacer la sélection |
 | Ctrl+A | tout sélectionner |
