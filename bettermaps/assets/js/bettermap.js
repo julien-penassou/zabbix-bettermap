@@ -34,14 +34,18 @@
 		vm: {name: 'VM / Conteneur', svg: '<path d="M24 5l17 8.5v21L24 43 7 34.5v-21z"/><path d="M7 13.5 24 22l17-8.5M24 22v21"/>'},
 		storage: {name: 'Stockage / NAS', svg: '<rect x="7" y="8" width="34" height="10" rx="2"/><rect x="7" y="19" width="34" height="10" rx="2"/><rect x="7" y="30" width="34" height="10" rx="2"/><path d="M12 13h8M12 24h8M12 35h8"/><circle cx="35" cy="13" r="1.5"/><circle cx="35" cy="24" r="1.5"/><circle cx="35" cy="35" r="1.5"/>'},
 		pc: {name: 'Poste de travail', svg: '<rect x="5" y="8" width="38" height="25" rx="2"/><path d="M17 41h14M24 33v8"/>'},
-		ap: {name: 'Borne Wi-Fi', svg: '<path d="M9 19a21 21 0 0 1 30 0M14.5 25a13 13 0 0 1 19 0M20 31a5.5 5.5 0 0 1 8 0"/><circle cx="24" cy="37" r="2.2"/>'},
-		printer: {name: 'Imprimante', svg: '<path d="M14 18V7h20v11"/><rect x="7" y="18" width="34" height="14" rx="2"/><rect x="14" y="27" width="20" height="14"/>'},
-		phone: {name: 'Téléphone IP', svg: '<rect x="8" y="10" width="32" height="30" rx="3"/><path d="M14 10V6h8v4"/><rect x="14" y="16" width="20" height="7"/><path d="M15 29h2M23 29h2M31 29h2M15 34h2M23 34h2M31 34h2"/>'},
 		camera: {name: 'Caméra', svg: '<rect x="5" y="15" width="28" height="18" rx="3"/><path d="M33 21l10-5v16l-10-5"/><circle cx="14" cy="24" r="4"/>'},
 		ups: {name: 'Onduleur / Énergie', svg: '<rect x="11" y="5" width="26" height="38" rx="3"/><path d="M26 12l-6 12h8l-6 12"/>'},
 		group: {name: 'Groupe', svg: '<rect x="17" y="5" width="14" height="11" rx="2"/><rect x="4" y="32" width="14" height="11" rx="2"/><rect x="30" y="32" width="14" height="11" rx="2"/><path d="M24 16v8M11 32v-8h26v8"/>'},
-		generic: {name: 'Générique', svg: '<rect x="8" y="8" width="32" height="32" rx="6"/><circle cx="24" cy="24" r="6"/>'}
-	};
+		generic: {name: 'Générique', svg: '<rect x="8" y="8" width="32" height="32" rx="6"/><circle cx="24" cy="24" r="6"/>'},
+		antenna: {name: 'Antenne radio', svg: '<path d="M24 20v22M18 42h12"/><circle cx="24" cy="16" r="3"/><path d="M17 9a10 10 0 0 0 0 14M31 9a10 10 0 0 1 0 14"/><path d="M12 5a17 17 0 0 0 0 22M36 5a17 17 0 0 1 0 22"/>'},
+        printer: {name: 'Imprimante', svg: '<rect x="14" y="7" width="20" height="11" rx="2"/><path d="M7 18h34a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H34M14 32H7a2 2 0 0 1-2-2V20a2 2 0 0 1 2-2"/><rect x="14" y="27" width="20" height="14" rx="2"/>'},
+        phone: {name: 'Téléphone IP', svg: '<rect x="6" y="8" width="36" height="32" rx="4"/><rect x="6" y="8" width="10" height="32" rx="2"/><rect x="20" y="12" width="18" height="14" rx="1.5"/><circle cx="24" cy="32" r="1.5"/><circle cx="29" cy="32" r="1.5"/><circle cx="34" cy="32" r="1.5"/>'},
+        ap: {name: 'Borne Wi-Fi', svg: '<rect x="2" y="2" width="44" height="44" rx="6" ry="6"/><path d="M9 19a21 21 0 0 1 30 0M14.5 25a13 13 0 0 1 19 0M20 31a5.5 5.5 0 0 1 8 0" stroke-linecap="round"/><circle cx="24" cy="37" r="2.2"/>'}
+        };
+
+
+
 
 	const MAP_DEFAULTS = {
 		grid: true,
