@@ -24,7 +24,7 @@ This frontend module adds **Monitoring › Maps+**, a map editor that is indepen
 
 The same module also provides the **Map+** widget, which shows these maps on a dashboard.
 
-📖 **[User guide](docs/guide-utilisateur.md)** (in French): viewing, creating and editing maps, step by step with screenshots.
+📖 **[User guide](docs/user-guide.md)**: viewing, creating and editing maps, step by step with screenshots.
 
 ## Installation
 
