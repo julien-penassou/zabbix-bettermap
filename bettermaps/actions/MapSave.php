@@ -4,6 +4,7 @@ namespace Modules\BetterMaps\Actions;
 
 use Modules\BetterMaps\Lib\Access;
 use Modules\BetterMaps\Lib\JsonController;
+use Modules\BetterMaps\Lib\Lang;
 use Modules\BetterMaps\Lib\MapStorage;
 
 class MapSave extends JsonController {
@@ -29,7 +30,7 @@ class MapSave extends JsonController {
 		$raw = $this->getInput('data');
 
 		if (strlen($raw) > self::MAX_SIZE) {
-			$this->respond(['error' => 'Carte trop volumineuse.']);
+			$this->respond(['error' => Lang::t('Map too large.')]);
 
 			return;
 		}
@@ -38,13 +39,13 @@ class MapSave extends JsonController {
 
 		if (!is_array($data) || !isset($data['nodes'], $data['links'])
 				|| !is_array($data['nodes']) || !is_array($data['links'])) {
-			$this->respond(['error' => 'Données de carte invalides.']);
+			$this->respond(['error' => Lang::t('Invalid map data.')]);
 
 			return;
 		}
 
 		if (MapStorage::get($mapid) === null) {
-			$this->respond(['error' => 'Cette carte n\'existe plus.']);
+			$this->respond(['error' => Lang::t('This map no longer exists.')]);
 
 			return;
 		}
@@ -52,6 +53,6 @@ class MapSave extends JsonController {
 		$name = mb_substr(trim($this->getInput('name')), 0, 255);
 		$ok = MapStorage::update($mapid, $name, json_encode($data, JSON_UNESCAPED_UNICODE));
 
-		$this->respond($ok ? ['result' => true] : ['error' => 'Échec de l\'enregistrement.']);
+		$this->respond($ok ? ['result' => true] : ['error' => Lang::t('Saving failed.')]);
 	}
 }

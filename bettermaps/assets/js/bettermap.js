@@ -12,36 +12,69 @@
 
 	const SVGNS = 'http://www.w3.org/2000/svg';
 
+	/* ------------------------------------------------------------------ traductions */
+
+	// Les textes sont écrits en anglais ; les catalogues (assets/js/lang.<code>.js) remplissent window.BetterMapsLang.
+	// La langue est celle de la page Zabbix (<html lang="fr">) : celle de l'utilisateur, sinon celle du serveur.
+	function t(text, params) {
+		const code = (document.documentElement.lang || 'en').slice(0, 2).toLowerCase();
+		const dict = (window.BetterMapsLang || {})[code];
+		let s = dict && Object.prototype.hasOwnProperty.call(dict, text) ? dict[text] : text;
+
+		if (params) {
+			s = s.replace(/\{(\w+)\}/g, (m, k) => k in params ? String(params[k]) : m);
+		}
+
+		return s;
+	}
+
+	// « Hôte : objet » (l'espace avant les deux-points dépend de la langue).
+	function pair(a, b) {
+		return t('{a}: {b}', {a, b});
+	}
+
+	function sevName(severity) {
+		return t(SEVERITIES[severity].name);
+	}
+
+	function labelPositions() {
+		return Object.fromEntries(Object.entries(LABEL_POSITIONS).map(([k, v]) => [k, t(v)]));
+	}
+
+	function linkStyles() {
+		return {curve: t('Curved'), straight: t('Straight'), orthogonal: t('Orthogonal')};
+	}
+
 	const SEVERITIES = [
-		{name: 'Non classé', color: '#97AAB3'},
+		{name: 'Not classified', color: '#97AAB3'},
 		{name: 'Information', color: '#7499FF'},
-		{name: 'Avertissement', color: '#FFC859'},
-		{name: 'Moyen', color: '#FFA059'},
-		{name: 'Haut', color: '#E97659'},
-		{name: 'Désastre', color: '#E45959'}
+		{name: 'Warning', color: '#FFC859'},
+		{name: 'Average', color: '#FFA059'},
+		{name: 'High', color: '#E97659'},
+		{name: 'Disaster', color: '#E45959'}
 	];
 	const OK_COLOR = '#3dbf75';
 	const MAINT_COLOR = '#9b6dd6';
 
 	// Icônes dessinées dans un carré 48x48, trait = currentColor.
 	const ICONS = {
-		server: {name: 'Serveur', svg: '<rect x="11" y="5" width="26" height="38" rx="3"/><path d="M16 14h16M16 21h16M16 28h16"/><circle cx="18" cy="36" r="1.6"/><circle cx="24" cy="36" r="1.6"/>'},
+		server: {name: 'Server', svg: '<rect x="11" y="5" width="26" height="38" rx="3"/><path d="M16 14h16M16 21h16M16 28h16"/><circle cx="18" cy="36" r="1.6"/><circle cx="24" cy="36" r="1.6"/>'},
 		switch: {name: 'Switch', svg: '<rect x="4" y="17" width="40" height="14" rx="3"/><path d="M10 24h3M17 24h3M24 24h3M31 24h3"/><path d="M12 11h22l-4-4M36 37H14l4 4"/>'},
-		router: {name: 'Routeur', svg: '<circle cx="24" cy="24" r="18"/><path d="M24 8v11M24 40V29M8 24h11M40 24H29"/><path d="M20.5 12 24 8l3.5 4M20.5 36l3.5 4 3.5-4M12 20.5 8 24l4 3.5M36 20.5l4 3.5-4 3.5"/>'},
-		firewall: {name: 'Pare-feu', svg: '<rect x="5" y="9" width="38" height="30" rx="2"/><path d="M5 19h38M5 29h38M17 9v10M31 9v10M11 19v10M24 19v10M37 19v10M17 29v10M31 29v10"/>'},
+		router: {name: 'Router', svg: '<circle cx="24" cy="24" r="18"/><path d="M24 8v11M24 40V29M8 24h11M40 24H29"/><path d="M20.5 12 24 8l3.5 4M20.5 36l3.5 4 3.5-4M12 20.5 8 24l4 3.5M36 20.5l4 3.5-4 3.5"/>'},
+		firewall: {name: 'Firewall', svg: '<rect x="5" y="9" width="38" height="30" rx="2"/><path d="M5 19h38M5 29h38M17 9v10M31 9v10M11 19v10M24 19v10M37 19v10M17 29v10M31 29v10"/>'},
 		cloud: {name: 'Cloud / Internet', svg: '<path d="M14 37h21a8.5 8.5 0 0 0 .5-17A11.5 11.5 0 0 0 13.4 18 9.5 9.5 0 0 0 14 37z"/>'},
-		database: {name: 'Base de données', svg: '<ellipse cx="24" cy="11" rx="14" ry="5"/><path d="M10 11v26c0 2.8 6.3 5 14 5s14-2.2 14-5V11"/><path d="M10 20c0 2.8 6.3 5 14 5s14-2.2 14-5M10 29c0 2.8 6.3 5 14 5s14-2.2 14-5"/>'},
-		vm: {name: 'VM / Conteneur', svg: '<path d="M24 5l17 8.5v21L24 43 7 34.5v-21z"/><path d="M7 13.5 24 22l17-8.5M24 22v21"/>'},
-		storage: {name: 'Stockage / NAS', svg: '<rect x="7" y="8" width="34" height="10" rx="2"/><rect x="7" y="19" width="34" height="10" rx="2"/><rect x="7" y="30" width="34" height="10" rx="2"/><path d="M12 13h8M12 24h8M12 35h8"/><circle cx="35" cy="13" r="1.5"/><circle cx="35" cy="24" r="1.5"/><circle cx="35" cy="35" r="1.5"/>'},
-		pc: {name: 'Poste de travail', svg: '<rect x="5" y="8" width="38" height="25" rx="2"/><path d="M17 41h14M24 33v8"/>'},
-		camera: {name: 'Caméra', svg: '<rect x="5" y="15" width="28" height="18" rx="3"/><path d="M33 21l10-5v16l-10-5"/><circle cx="14" cy="24" r="4"/>'},
-		ups: {name: 'Onduleur / Énergie', svg: '<rect x="11" y="5" width="26" height="38" rx="3"/><path d="M26 12l-6 12h8l-6 12"/>'},
-		group: {name: 'Groupe', svg: '<rect x="17" y="5" width="14" height="11" rx="2"/><rect x="4" y="32" width="14" height="11" rx="2"/><rect x="30" y="32" width="14" height="11" rx="2"/><path d="M24 16v8M11 32v-8h26v8"/>'},
-		generic: {name: 'Générique', svg: '<rect x="8" y="8" width="32" height="32" rx="6"/><circle cx="24" cy="24" r="6"/>'},
-		antenna: {name: 'Antenne radio', svg: '<path d="M24 20v22M18 42h12"/><circle cx="24" cy="16" r="3"/><path d="M17 9a10 10 0 0 0 0 14M31 9a10 10 0 0 1 0 14"/><path d="M12 5a17 17 0 0 0 0 22M36 5a17 17 0 0 1 0 22"/>'},
-		printer: {name: 'Imprimante', svg: '<rect x="14" y="7" width="20" height="11" rx="2"/><path d="M7 18h34a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H34M14 32H7a2 2 0 0 1-2-2V20a2 2 0 0 1 2-2"/><rect x="14" y="27" width="20" height="14" rx="2"/>'},
-		phone: {name: 'Téléphone IP', svg: '<rect x="6" y="8" width="36" height="32" rx="4"/><rect x="6" y="8" width="10" height="32" rx="2"/><rect x="20" y="12" width="18" height="14" rx="1.5"/><circle cx="24" cy="32" r="1.5"/><circle cx="29" cy="32" r="1.5"/><circle cx="34" cy="32" r="1.5"/>'},
-		ap: {name: 'Borne Wi-Fi', svg: '<rect x="2" y="2" width="44" height="44" rx="6" ry="6"/><path d="M9 19a21 21 0 0 1 30 0M14.5 25a13 13 0 0 1 19 0M20 31a5.5 5.5 0 0 1 8 0" stroke-linecap="round"/><circle cx="24" cy="37" r="2.2"/>'}
+		database: {name: 'Database', svg: '<ellipse cx="24" cy="11" rx="14" ry="5"/><path d="M10 11v26c0 2.8 6.3 5 14 5s14-2.2 14-5V11"/><path d="M10 20c0 2.8 6.3 5 14 5s14-2.2 14-5M10 29c0 2.8 6.3 5 14 5s14-2.2 14-5"/>'},
+		vm: {name: 'VM / Container', svg: '<path d="M24 5l17 8.5v21L24 43 7 34.5v-21z"/><path d="M7 13.5 24 22l17-8.5M24 22v21"/>'},
+		storage: {name: 'Storage / NAS', svg: '<rect x="7" y="8" width="34" height="10" rx="2"/><rect x="7" y="19" width="34" height="10" rx="2"/><rect x="7" y="30" width="34" height="10" rx="2"/><path d="M12 13h8M12 24h8M12 35h8"/><circle cx="35" cy="13" r="1.5"/><circle cx="35" cy="24" r="1.5"/><circle cx="35" cy="35" r="1.5"/>'},
+		pc: {name: 'Workstation', svg: '<rect x="5" y="8" width="38" height="25" rx="2"/><path d="M17 41h14M24 33v8"/>'},
+		camera: {name: 'Camera', svg: '<rect x="5" y="15" width="28" height="18" rx="3"/><path d="M33 21l10-5v16l-10-5"/><circle cx="14" cy="24" r="4"/>'},
+		ups: {name: 'UPS / Power', svg: '<rect x="11" y="5" width="26" height="38" rx="3"/><path d="M26 12l-6 12h8l-6 12"/>'},
+		group: {name: 'Group', svg: '<rect x="17" y="5" width="14" height="11" rx="2"/><rect x="4" y="32" width="14" height="11" rx="2"/><rect x="30" y="32" width="14" height="11" rx="2"/><path d="M24 16v8M11 32v-8h26v8"/>'},
+		generic: {name: 'Generic', svg: '<rect x="8" y="8" width="32" height="32" rx="6"/><circle cx="24" cy="24" r="6"/>'},
+		antenna: {name: 'Radio antenna', svg: '<path d="M24 20v22M18 42h12"/><circle cx="24" cy="16" r="3"/><path d="M17 9a10 10 0 0 0 0 14M31 9a10 10 0 0 1 0 14"/><path d="M12 5a17 17 0 0 0 0 22M36 5a17 17 0 0 1 0 22"/>'},
+		printer: {name: 'Printer', svg: '<rect x="14" y="7" width="20" height="11" rx="2"/><path d="M7 18h34a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H34M14 32H7a2 2 0 0 1-2-2V20a2 2 0 0 1 2-2"/><rect x="14" y="27" width="20" height="14" rx="2"/>'},
+		phone: {name: 'IP phone', svg: '<rect x="6" y="8" width="36" height="32" rx="4"/><rect x="6" y="8" width="10" height="32" rx="2"/><rect x="20" y="12" width="18" height="14" rx="1.5"/><circle cx="24" cy="32" r="1.5"/><circle cx="29" cy="32" r="1.5"/><circle cx="34" cy="32" r="1.5"/>'},
+		ap: {name: 'Wi-Fi access point', svg: '<rect x="2" y="2" width="44" height="44" rx="6" ry="6"/><path d="M9 19a21 21 0 0 1 30 0M14.5 25a13 13 0 0 1 19 0M20 31a5.5 5.5 0 0 1 8 0" stroke-linecap="round"/><circle cx="24" cy="37" r="2.2"/>'}
 	};
 
 	const MAP_DEFAULTS = {
@@ -55,7 +88,7 @@
 	};
 
 	// Emplacements du libellé d'un hôte ou d'un groupe ('' : celui de la carte).
-	const LABEL_POSITIONS = {bottom: 'En bas', top: 'En haut', left: 'À gauche', right: 'À droite'};
+	const LABEL_POSITIONS = {bottom: 'Bottom', top: 'Top', left: 'Left', right: 'Right'};
 
 	const NODE_DEFAULTS = {
 		host: {w: 56, h: 56, label: '', hostid: '', hostname: '', icon: 'server', shape: 'round', fill: '', stroke: '',
@@ -66,20 +99,20 @@
 			stroke: '', color: '', fontSize: 13, url: ''},
 		trigger: {w: 180, h: 54, label: '', hostid: '', hostname: '', triggerid: '', triggername: '', shape: 'round',
 			fill: '', stroke: '', color: '', fontSize: 13, url: ''},
-		shape: {w: 200, h: 120, label: 'Zone', shape: 'round', fill: '', stroke: '', color: '', fontSize: 13, url: '',
+		shape: {w: 200, h: 120, label: 'Area', shape: 'round', fill: '', stroke: '', color: '', fontSize: 13, url: '',
 			font: '', bold: true, italic: false, underline: false, align: 'left', valign: 'top'},
-		text: {w: 120, h: 30, label: 'Texte', fill: '', stroke: '', color: '', fontSize: 14, url: '',
+		text: {w: 120, h: 30, label: 'Text', fill: '', stroke: '', color: '', fontSize: 14, url: '',
 			font: '', bold: false, italic: false, underline: false, align: 'center', valign: 'middle'}
 	};
 
 	// Polices proposées pour les textes et les zones ('' : police de l'interface Zabbix).
 	const FONTS = {
-		'': {name: 'Par défaut', css: ''},
+		'': {name: 'Default', css: ''},
 		arial: {name: 'Arial', css: 'Arial, Helvetica, sans-serif'},
 		verdana: {name: 'Verdana', css: 'Verdana, Geneva, sans-serif'},
 		tahoma: {name: 'Tahoma', css: 'Tahoma, Geneva, sans-serif'},
 		trebuchet: {name: 'Trebuchet MS', css: '"Trebuchet MS", Helvetica, sans-serif'},
-		system: {name: 'Système', css: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'},
+		system: {name: 'System', css: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'},
 		georgia: {name: 'Georgia', css: 'Georgia, serif'},
 		times: {name: 'Times New Roman', css: '"Times New Roman", Times, serif'},
 		courier: {name: 'Courier New', css: '"Courier New", Courier, monospace'},
@@ -249,7 +282,7 @@
 		const m = Math.floor(s / 60);
 
 		if (d) {
-			return d + 'j ' + h + 'h';
+			return t('{d}d {h}h', {d, h});
 		}
 
 		return h ? h + 'h ' + m + 'm' : m + 'm';
@@ -280,7 +313,7 @@
 					return JSON.parse(text);
 				}
 				catch (e) {
-					throw new Error('Réponse inattendue du serveur (session expirée ou droits insuffisants ?)');
+					throw new Error(t('Unexpected server response (session expired or insufficient permissions?)'));
 				}
 			});
 	}
@@ -678,7 +711,7 @@
 			const r = new FileReader();
 
 			r.onload = () => resolve(r.result);
-			r.onerror = () => reject(new Error('Lecture du fichier impossible.'));
+			r.onerror = () => reject(new Error(t('Unable to read the file.')));
 			r.readAsDataURL(file);
 		});
 	}
@@ -845,10 +878,10 @@
 				// Petits contrôles flottants, construits une seule fois.
 				if (!tb.childElementCount && this.cfg.controls) {
 					tb.append(
-						btn('−', 'Dézoomer', () => this.zoomBy(1 / 1.25)),
-						btn('+', 'Zoomer (ou Ctrl + molette)', () => this.zoomBy(1.25)),
-						btn('⤢', 'Afficher toute la carte', () => this.fit()),
-						htmlEl('a', {class: 'btn-alt bm-btn', title: 'Ouvrir la carte en grand', text: '↗',
+						btn('−', t('Zoom out'), () => this.zoomBy(1 / 1.25)),
+						btn('+', t('Zoom in (or Ctrl + mouse wheel)'), () => this.zoomBy(1.25)),
+						btn('⤢', t('Show the whole map'), () => this.fit()),
+						htmlEl('a', {class: 'btn-alt bm-btn', title: t('Open the full map'), text: '↗',
 							href: 'zabbix.php?action=bettermap.view&mapid=' + encodeURIComponent(this.cfg.mapid)})
 					);
 				}
@@ -860,46 +893,46 @@
 
 			if (this.cfg.canEdit) {
 				tb.append(htmlEl('div', {class: 'bm-seg'}, [
-					btn('Voir', 'Mode visualisation', () => this.setEdit(false), {cls: this.edit ? '' : 'bm-active'}),
-					btn('Éditer', 'Mode édition', () => this.setEdit(true), {cls: this.edit ? 'bm-active' : ''})
+					btn(t('View'), t('View mode'), () => this.setEdit(false), {cls: this.edit ? '' : 'bm-active'}),
+					btn(t('Edit'), t('Edit mode'), () => this.setEdit(true), {cls: this.edit ? 'bm-active' : ''})
 				]), sep());
 			}
 
 			if (this.edit) {
 				tb.append(
-					btn('+ Hôte', 'Ajouter un hôte Zabbix', () => this.addNode('host')),
-					btn('+ Groupe', 'Ajouter un groupe d\'hôtes (statut cumulé de ses hôtes)', () => this.addNode('group')),
-					btn('+ Item', 'Ajouter un item (dernière valeur et statut de ses déclencheurs)', () => this.addNode('item')),
-					btn('+ Déclencheur', 'Ajouter un déclencheur (OK ou en problème)', () => this.addNode('trigger')),
-					btn('+ Zone', 'Ajouter un rectangle / une zone', () => this.addNode('shape', {shape: 'round'})),
-					btn('+ Ellipse', 'Ajouter une ellipse', () => this.addNode('shape', {shape: 'ellipse', w: 140, h: 90,
+					btn(t('+ Host'), t('Add a Zabbix host'), () => this.addNode('host')),
+					btn(t('+ Group'), t('Add a host group (combined status of its hosts)'), () => this.addNode('group')),
+					btn(t('+ Item'), t('Add an item (latest value and status of its triggers)'), () => this.addNode('item')),
+					btn(t('+ Trigger'), t('Add a trigger (OK or in problem)'), () => this.addNode('trigger')),
+					btn(t('+ Area'), t('Add a rectangle / area'), () => this.addNode('shape', {shape: 'round'})),
+					btn(t('+ Ellipse'), t('Add an ellipse'), () => this.addNode('shape', {shape: 'ellipse', w: 140, h: 90,
 						label: ''})),
-					btn('+ Texte', 'Ajouter un texte libre', () => this.addNode('text')),
+					btn(t('+ Text'), t('Add free text'), () => this.addNode('text')),
 					sep(),
-					btn('↶', 'Annuler (Ctrl+Z)', () => this.undo(), {disabled: !this.undoStack.length}),
-					btn('↷', 'Rétablir (Ctrl+Y)', () => this.redo(), {disabled: !this.redoStack.length}),
+					btn('↶', t('Undo (Ctrl+Z)'), () => this.undo(), {disabled: !this.undoStack.length}),
+					btn('↷', t('Redo (Ctrl+Y)'), () => this.redo(), {disabled: !this.redoStack.length}),
 					sep()
 				);
 			}
 
 			tb.append(
-				btn('−', 'Dézoomer', () => this.zoomBy(1 / 1.25)),
-				htmlEl('span', {class: 'bm-zoom', text: Math.round(this.view.k * 100) + ' %', title: 'Revenir à 100 %',
+				btn('−', t('Zoom out'), () => this.zoomBy(1 / 1.25)),
+				htmlEl('span', {class: 'bm-zoom', text: Math.round(this.view.k * 100) + ' %', title: t('Reset to 100%'),
 					onclick: () => this.zoomTo(1)}),
-				btn('+', 'Zoomer', () => this.zoomBy(1.25)),
-				btn('Ajuster', 'Afficher toute la carte', () => this.fit()),
-				btn('⛶', 'Plein écran', () => this.toggleFullscreen())
+				btn('+', t('Zoom in'), () => this.zoomBy(1.25)),
+				btn(t('Fit'), t('Show the whole map'), () => this.fit()),
+				btn('⛶', t('Full screen'), () => this.toggleFullscreen())
 			);
 
 			tb.append(htmlEl('span', {class: 'bm-spacer'}));
 
 			if (this.lastUpdate) {
-				tb.append(htmlEl('span', {class: 'bm-updated', text: 'Statut : ' + this.lastUpdate.toLocaleTimeString()}));
+				tb.append(htmlEl('span', {class: 'bm-updated', text: t('Status: {time}', {time: this.lastUpdate.toLocaleTimeString()})}));
 			}
 
 			if (this.cfg.canEdit && (this.edit || this.dirty)) {
-				tb.append(btn(this.saving ? 'Enregistrement…' : (this.dirty ? 'Enregistrer *' : 'Enregistré'),
-					'Enregistrer (Ctrl+S)', () => this.save(),
+				tb.append(btn(this.saving ? t('Saving…') : (this.dirty ? t('Save *') : t('Saved')),
+					t('Save (Ctrl+S)'), () => this.save(),
 					{cls: 'bm-save' + (this.dirty ? ' bm-dirty' : ''), disabled: this.saving}
 				));
 			}
@@ -992,8 +1025,8 @@
 			}
 
 			const st = this.objStatus(n);
-			const empty = {host: '(choisir un hôte)', group: '(choisir un groupe)', item: '(choisir un item)',
-				trigger: '(choisir un déclencheur)'}[n.type];
+			const empty = {host: t('(choose a host)'), group: t('(choose a group)'), item: t('(choose an item)'),
+				trigger: t('(choose a trigger)')}[n.type];
 
 			return st ? st.name : (n[kind.name] || (this.edit ? empty : ''));
 		}
@@ -1225,17 +1258,17 @@
 		triggerText(t) {
 			const st = this.status.triggers[t.triggerid];
 
-			return (st ? st.host : t.hostname) + ' : ' + (st ? st.name : t.triggername);
+			return pair(st ? st.host : t.hostname, st ? st.name : t.triggername);
 		}
 
 		triggerStateText(triggerid) {
 			const st = this.triggerState(triggerid);
 
 			return {
-				problem: () => 'PROBLÈME (' + SEVERITIES[st.severity].name + ')',
+				problem: () => t('PROBLEM ({severity})', {severity: sevName(st.severity)}),
 				ok: () => 'OK',
-				disabled: () => 'désactivé',
-				unknown: () => 'introuvable ou non autorisé',
+				disabled: () => t('disabled'),
+				unknown: () => t('not found or no permission'),
 				none: () => '…'
 			}[st.state]();
 		}
@@ -1403,18 +1436,18 @@
 				text = info.name;
 
 				if (n.type === 'group') {
-					text += '\n' + info.hosts + ' hôte(s), ' + info.problem_hosts + ' en problème';
+					text += '\n' + t('{hosts} host(s), {problems} in problem', {hosts: info.hosts, problems: info.problem_hosts});
 				}
 				else if (n.type === 'item') {
-					text = info.host + ' : ' + info.name + '\n' + (info.value ?? 'aucune donnée');
+					text = pair(info.host, info.name) + '\n' + (info.value ?? t('no data'));
 				}
 				else if (n.type === 'trigger') {
-					text = info.host + ' : ' + info.name + '\nSévérité : ' + SEVERITIES[info.severity].name;
+					text = pair(info.host, info.name) + '\n' + t('Severity: {severity}', {severity: sevName(info.severity)});
 				}
 
 				text += info.problems.length
-					? '\n' + info.problems.map(p => '• ' + (n.type === 'group' ? p.host + ' : ' : '') + p.name).join('\n')
-					: '\nAucun problème';
+					? '\n' + info.problems.map(p => '• ' + (n.type === 'group' ? pair(p.host, p.name) : p.name)).join('\n')
+					: '\n' + t('No problems');
 			}
 
 			title.textContent = text;
@@ -1434,10 +1467,10 @@
 
 			// Déclencheur : son état, aux couleurs de Zabbix.
 			return {
-				problem: ['PROBLÈME', sevColor],
+				problem: [t('PROBLEM'), sevColor],
 				ok: ['OK', OK_COLOR],
-				disabled: ['Désactivé', null],
-				unsupported: ['Inconnu', null]
+				disabled: [t('Disabled'), null],
+				unsupported: [t('Unknown'), null]
 			}[st.state] || ['', null];
 		}
 
@@ -1813,8 +1846,8 @@
 
 				title.textContent = this.nodeLabel(a) + ' ↔ ' + this.nodeLabel(b) + (l.label ? '\n' + l.label : '')
 					+ (l.status === 'triggers' && l.triggers.length > 1
-						? '\n' + (l.triggerLogic === 'and' ? 'Tous les déclencheurs (ET) :' : 'Au moins un déclencheur (OU) :') : '')
-					+ (l.status === 'triggers' ? l.triggers : []).map(t => '\n• ' + this.triggerText(t) + ' : ' + this.triggerStateText(t.triggerid)).join('');
+						? '\n' + (l.triggerLogic === 'and' ? t('All triggers (AND):') : t('At least one trigger (OR):')) : '')
+					+ (l.status === 'triggers' ? l.triggers : []).map(tr => '\n• ' + pair(this.triggerText(tr), this.triggerStateText(tr.triggerid))).join('');
 			}
 		}
 
@@ -2752,6 +2785,9 @@
 			const c = this.visibleCenter();
 			const n = Object.assign({id: uid(), type}, NODE_DEFAULTS[type], extra);
 
+			// Libellé par défaut (« Area », « Text ») dans la langue de l'interface.
+			n.label = t(n.label);
+
 			n.x = this.snap(c.x - n.w / 2) + (this.pasteCount++ % 5) * 10;
 			n.y = this.snap(c.y - n.h / 2) + ((this.pasteCount - 1) % 5) * 10;
 
@@ -2965,7 +3001,7 @@
 						this.dirty = false;
 					}
 
-					this.notify('Carte enregistrée');
+					this.notify(t('Map saved'));
 				})
 				.catch(err => this.notify(err.message, true))
 				.finally(() => {
@@ -2997,25 +3033,25 @@
 				return;
 			}
 
-			const what = {host: 'Hôte', group: 'Groupe', item: 'Item', trigger: 'Déclencheur'}[n.type];
+			const what = {host: t('Host'), group: t('Group'), item: t('Item'), trigger: t('Trigger')}[n.type];
 
 			p.append(htmlEl('div', {class: 'bm-popup-title', text: st ? st.name : (n[kind.name] || what)}));
 
 			if (!st) {
-				p.append(htmlEl('div', {class: 'bm-popup-empty', text: what + ' introuvable ou non autorisé.'}));
+				p.append(htmlEl('div', {class: 'bm-popup-empty', text: t('{object} not found or no permission.', {object: what})}));
 			}
 			else {
 				if (n.type === 'item') {
 					p.append(
 						htmlEl('div', {class: 'bm-popup-sub', text: st.host}),
 						htmlEl('div', {class: 'bm-popup-value'}, [
-							htmlEl('span', {text: st.value ?? 'Aucune donnée'}),
-							st.clock ? htmlEl('span', {class: 'bm-page', text: 'il y a ' + formatAge(st.clock)}) : null
+							htmlEl('span', {text: st.value ?? t('No data')}),
+							st.clock ? htmlEl('span', {class: 'bm-page', text: t('{age} ago', {age: formatAge(st.clock)})}) : null
 						])
 					);
 
 					if (st.unsupported) {
-						p.append(htmlEl('div', {class: 'bm-popup-empty', text: 'Item non supporté'}));
+						p.append(htmlEl('div', {class: 'bm-popup-empty', text: t('Item not supported')}));
 					}
 				}
 
@@ -3024,29 +3060,29 @@
 						htmlEl('div', {class: 'bm-popup-sub', text: st.host}),
 						htmlEl('div', {class: 'bm-popup-value'}, [
 							htmlEl('span', {class: 'bm-sev', style: 'background:' + SEVERITIES[st.severity].color}),
-							htmlEl('span', {text: SEVERITIES[st.severity].name})
+							htmlEl('span', {text: sevName(st.severity)})
 						])
 					);
 
 					if (st.unsupported) {
-						p.append(htmlEl('div', {class: 'bm-popup-empty', text: 'État inconnu (expression non évaluable)'}));
+						p.append(htmlEl('div', {class: 'bm-popup-empty', text: t('Unknown state (expression cannot be evaluated)')}));
 					}
 				}
 
 				if (n.type === 'group') {
-					p.append(htmlEl('div', {class: 'bm-popup-sub', text: st.hosts + ' hôte(s) surveillé(s) · '
-						+ st.problem_hosts + ' en problème' + (st.maintenance ? ' · ' + st.maintenance + ' en maintenance' : '')}));
+					p.append(htmlEl('div', {class: 'bm-popup-sub', text: t('{hosts} monitored host(s) · {problems} in problem', {hosts: st.hosts, problems: st.problem_hosts})
+						+ (st.maintenance ? ' · ' + t('{count} in maintenance', {count: st.maintenance}) : '')}));
 				}
 				else if (st.maintenance) {
-					p.append(htmlEl('div', {class: 'bm-popup-maint', text: 'En maintenance'}));
+					p.append(htmlEl('div', {class: 'bm-popup-maint', text: t('In maintenance')}));
 				}
 
 				if (st.disabled) {
-					p.append(htmlEl('div', {class: 'bm-popup-empty', text: what + ' désactivé'}));
+					p.append(htmlEl('div', {class: 'bm-popup-empty', text: t('{object} disabled', {object: what})}));
 				}
 
 				if (!st.problems.length) {
-					p.append(htmlEl('div', {class: 'bm-popup-ok', text: 'Aucun problème'}));
+					p.append(htmlEl('div', {class: 'bm-popup-ok', text: t('No problems')}));
 				}
 				else {
 					const list = htmlEl('ul', {class: 'bm-popup-problems'});
@@ -3055,8 +3091,8 @@
 						.forEach(pr => {
 							const li = htmlEl('li', {}, [
 								htmlEl('span', {class: 'bm-sev', style: 'background:' + SEVERITIES[pr.severity].color,
-									title: SEVERITIES[pr.severity].name}),
-								htmlEl('span', {class: 'bm-pname', text: (n.type === 'group' ? pr.host + ' : ' : '') + pr.name}),
+									title: sevName(pr.severity)}),
+								htmlEl('span', {class: 'bm-pname', text: n.type === 'group' ? pair(pr.host, pr.name) : pr.name}),
 								htmlEl('span', {class: 'bm-page', text: formatAge(pr.clock) + (pr.acknowledged ? ' ✓' : '')})
 							]);
 
@@ -3065,14 +3101,14 @@
 					p.append(list);
 
 					if (st.problems.length > 15) {
-						p.append(htmlEl('div', {class: 'bm-popup-empty', text: '… et ' + (st.problems.length - 15) + ' autres'}));
+						p.append(htmlEl('div', {class: 'bm-popup-empty', text: t('… and {count} more', {count: st.problems.length - 15})}));
 					}
 				}
 			}
 
 			p.append(htmlEl('div', {class: 'bm-popup-links'}, [
 				...this.popupLinks(n, st).map(([text, href]) => htmlEl('a', {href, text})),
-				n.url ? htmlEl('a', {href: n.url, text: 'Lien'}) : null
+				n.url ? htmlEl('a', {href: n.url, text: t('Link')}) : null
 			]));
 
 			this.placePopup(e);
@@ -3137,16 +3173,16 @@
 
 				p.append(htmlEl('div', {class: 'bm-popup-value'}, sev >= 0
 					? [htmlEl('span', {class: 'bm-sev', style: 'background:' + SEVERITIES[sev].color}),
-						htmlEl('span', {text: 'En problème · ' + SEVERITIES[sev].name})]
+						htmlEl('span', {text: t('In problem · {severity}', {severity: sevName(sev)})})]
 					: [htmlEl('span', {class: 'bm-sev', style: 'background:' + OK_COLOR}), htmlEl('span', {text: 'OK'})]));
 			}
 
 			// Sources du statut, avec leur état.
 			p.append(htmlEl('div', {class: 'bm-popup-head', text: byTriggers
 				? (l.triggers.length > 1
-					? (l.triggerLogic === 'and' ? 'Tous ces déclencheurs (ET)' : 'Au moins un de ces déclencheurs (OU)')
-					: 'Déclencheur')
-				: 'Selon ' + (sources.length > 1 ? 'les extrémités' : 'l\'extrémité')}));
+					? (l.triggerLogic === 'and' ? t('All of these triggers (AND)') : t('At least one of these triggers (OR)'))
+					: t('Trigger'))
+				: (sources.length > 1 ? t('Based on the ends') : t('Based on the end'))}));
 
 			const list = htmlEl('ul', {class: 'bm-popup-problems bm-popup-sources'});
 			const problems = new Map();
@@ -3164,9 +3200,10 @@
 				else {
 					st = this.nodeStatus(src.node);
 					name = this.nodeLabel(src.node);
-					text = {problem: () => SEVERITIES[st.severity].name + ' · ' + st.count + ' problème(s)', ok: () => 'OK',
-						maint: () => 'En maintenance', disabled: () => 'désactivé', unsupported: () => 'non supporté',
-						unknown: () => 'introuvable ou non autorisé', none: () => '…'}[st.state]();
+					text = {problem: () => t('{severity} · {count} problem(s)', {severity: sevName(st.severity), count: st.count}),
+						ok: () => 'OK', maint: () => t('In maintenance'), disabled: () => t('disabled'),
+						unsupported: () => t('not supported'), unknown: () => t('not found or no permission'),
+						none: () => '…'}[st.state]();
 					(this.objStatus(src.node) || {problems: []}).problems.forEach(pr => problems.set(pr.eventid, pr));
 				}
 
@@ -3185,24 +3222,24 @@
 			const all = [...problems.values()].sort((x, y) => y.severity - x.severity || y.clock - x.clock);
 
 			if (all.length) {
-				p.append(htmlEl('div', {class: 'bm-popup-head', text: 'Problèmes'}));
+				p.append(htmlEl('div', {class: 'bm-popup-head', text: t('Problems')}));
 
 				const pl = htmlEl('ul', {class: 'bm-popup-problems'});
 
 				all.slice(0, 15).forEach(pr => pl.append(htmlEl('li', {}, [
 					htmlEl('span', {class: 'bm-sev', style: 'background:' + SEVERITIES[pr.severity].color,
-						title: SEVERITIES[pr.severity].name}),
-					htmlEl('span', {class: 'bm-pname', text: pr.host + ' : ' + pr.name}),
+						title: sevName(pr.severity)}),
+					htmlEl('span', {class: 'bm-pname', text: pair(pr.host, pr.name)}),
 					htmlEl('span', {class: 'bm-page', text: formatAge(pr.clock) + (pr.acknowledged ? ' ✓' : '')})
 				])));
 				p.append(pl);
 
 				if (all.length > 15) {
-					p.append(htmlEl('div', {class: 'bm-popup-empty', text: '… et ' + (all.length - 15) + ' autres'}));
+					p.append(htmlEl('div', {class: 'bm-popup-empty', text: t('… and {count} more', {count: all.length - 15})}));
 				}
 			}
 			else if (this.statusLoaded) {
-				p.append(htmlEl('div', {class: 'bm-popup-ok', text: 'Aucun problème'}));
+				p.append(htmlEl('div', {class: 'bm-popup-ok', text: t('No problems')}));
 			}
 
 			// Liens vers Zabbix : regroupés pour les déclencheurs, par extrémité sinon.
@@ -3230,10 +3267,10 @@
 			const hostids = [...new Set(live.map(st => st.hostid).filter(Boolean))];
 
 			return [
-				['Problèmes', 'zabbix.php?action=problem.view&filter_set=1' + q('triggerids', triggers.map(t => t.triggerid))],
-				itemids.length ? ['Graphique', 'history.php?action=showgraph' + q('itemids', itemids)] : null,
-				hostids.length ? ['Dernières données', 'zabbix.php?action=latest.view&filter_set=1' + q('hostids', hostids)] : null,
-				hostids.length === 1 ? ['Graphiques de l\'hôte', 'zabbix.php?action=charts.view&filter_set=1'
+				[t('Problems'), 'zabbix.php?action=problem.view&filter_set=1' + q('triggerids', triggers.map(t => t.triggerid))],
+				itemids.length ? [t('Graph'), 'history.php?action=showgraph' + q('itemids', itemids)] : null,
+				hostids.length ? [t('Latest data'), 'zabbix.php?action=latest.view&filter_set=1' + q('hostids', hostids)] : null,
+				hostids.length === 1 ? [t('Host graphs'), 'zabbix.php?action=charts.view&filter_set=1'
 					+ q('filter_hostids', hostids)] : null
 			].filter(Boolean);
 		}
@@ -3244,9 +3281,9 @@
 				const id = encodeURIComponent(n.groupid);
 
 				return [
-					['Problèmes', 'zabbix.php?action=problem.view&filter_set=1&groupids%5B%5D=' + id],
-					['Hôtes', 'zabbix.php?action=host.view&filter_set=1&groupids%5B%5D=' + id],
-					['Dernières données', 'zabbix.php?action=latest.view&filter_set=1&groupids%5B%5D=' + id]
+					[t('Problems'), 'zabbix.php?action=problem.view&filter_set=1&groupids%5B%5D=' + id],
+					[t('Hosts'), 'zabbix.php?action=host.view&filter_set=1&groupids%5B%5D=' + id],
+					[t('Latest data'), 'zabbix.php?action=latest.view&filter_set=1&groupids%5B%5D=' + id]
 				];
 			}
 
@@ -3254,9 +3291,9 @@
 				const hostid = encodeURIComponent(st ? st.hostid : n.hostid);
 
 				return [
-					['Problèmes', 'zabbix.php?action=problem.view&filter_set=1&triggerids%5B%5D='
+					[t('Problems'), 'zabbix.php?action=problem.view&filter_set=1&triggerids%5B%5D='
 						+ encodeURIComponent(n.triggerid)],
-					['Dernières données', 'zabbix.php?action=latest.view&filter_set=1&hostids%5B%5D=' + hostid]
+					[t('Latest data'), 'zabbix.php?action=latest.view&filter_set=1&hostids%5B%5D=' + hostid]
 				];
 			}
 
@@ -3267,20 +3304,20 @@
 				const history = st && !st.numeric ? 'showvalues' : 'showgraph';
 
 				return [
-					[history === 'showgraph' ? 'Graphique' : 'Historique',
+					[history === 'showgraph' ? t('Graph') : t('History'),
 						'history.php?action=' + history + '&itemids%5B%5D=' + id],
-					['Problèmes', 'zabbix.php?action=problem.view&filter_set=1&hostids%5B%5D=' + hostid],
-					['Dernières données', 'zabbix.php?action=latest.view&filter_set=1&hostids%5B%5D=' + hostid]
+					[t('Problems'), 'zabbix.php?action=problem.view&filter_set=1&hostids%5B%5D=' + hostid],
+					[t('Latest data'), 'zabbix.php?action=latest.view&filter_set=1&hostids%5B%5D=' + hostid]
 				];
 			}
 
 			const id = encodeURIComponent(n.hostid);
 
 			return [
-				['Problèmes', 'zabbix.php?action=problem.view&filter_set=1&hostids%5B%5D=' + id],
-				['Dernières données', 'zabbix.php?action=latest.view&filter_set=1&hostids%5B%5D=' + id],
-				['Graphiques', 'zabbix.php?action=charts.view&filter_set=1&filter_hostids%5B%5D=' + id],
-				['Tableaux de bord', 'zabbix.php?action=host.dashboard.view&hostid=' + id]
+				[t('Problems'), 'zabbix.php?action=problem.view&filter_set=1&hostids%5B%5D=' + id],
+				[t('Latest data'), 'zabbix.php?action=latest.view&filter_set=1&hostids%5B%5D=' + id],
+				[t('Graphs'), 'zabbix.php?action=charts.view&filter_set=1&filter_hostids%5B%5D=' + id],
+				[t('Dashboards'), 'zabbix.php?action=host.dashboard.view&hostid=' + id]
 			];
 		}
 
@@ -3406,7 +3443,7 @@
 
 		colorField(obj, key, fallback) {
 			const input = htmlEl('input', {type: 'color', value: obj[key] || fallback});
-			const reset = htmlEl('button', {type: 'button', class: 'bm-color-reset', title: 'Couleur par défaut', text: '×'});
+			const reset = htmlEl('button', {type: 'button', class: 'bm-color-reset', title: t('Default color'), text: '×'});
 			const wrap = htmlEl('span', {class: 'bm-color' + (obj[key] ? '' : ' bm-color-default')}, [input, reset]);
 
 			this.bind(input, 'input', () => {
@@ -3477,10 +3514,10 @@
 		// l'identifiant et le nom choisis. opts.params : paramètres de recherche en plus, opts.after : après le choix.
 		picker(n, type, field, name, opts = {}) {
 			const texts = {
-				host: ['Rechercher un hôte…', 'Aucun hôte trouvé'],
-				group: ['Rechercher un groupe…', 'Aucun groupe trouvé'],
-				item: ['Rechercher un item (nom ou clé)…', 'Aucun item trouvé'],
-				trigger: ['Rechercher un déclencheur…', 'Aucun déclencheur trouvé']
+				host: [t('Search for a host…'), t('No host found')],
+				group: [t('Search for a group…'), t('No group found')],
+				item: [t('Search for an item (name or key)…'), t('No item found')],
+				trigger: [t('Search for a trigger…'), t('No trigger found')]
 			}[type];
 			const input = htmlEl('input', {type: 'text', value: n[name], placeholder: texts[0], disabled: opts.disabled});
 			const list = htmlEl('div', {class: 'bm-hp-list', hidden: true});
@@ -3512,7 +3549,7 @@
 						for (const r of results) {
 							// Déclencheurs : la sévérité sert de détail.
 							if (!r.detail && r.severity !== undefined && SEVERITIES[r.severity]) {
-								r.detail = SEVERITIES[r.severity].name;
+								r.detail = sevName(r.severity);
 							}
 
 							list.append(htmlEl('div', {
@@ -3596,7 +3633,7 @@
 
 			for (const key of ['none', ...Object.keys(ICONS)]) {
 				const b = htmlEl('button', {type: 'button', class: 'bm-icon-btn' + (n.icon === key ? ' bm-active' : ''),
-					title: key === 'none' ? 'Aucune icône : le libellé est écrit dans la boîte' : ICONS[key].name});
+					title: key === 'none' ? t('No icon: the label is written inside the box') : t(ICONS[key].name)});
 
 				b.append(key === 'none' ? htmlEl('span', {class: 'bm-icon-none', text: 'Abc'}) : iconSvg(key, 26));
 				b.addEventListener('click', () => select(key, b));
@@ -3620,9 +3657,9 @@
 
 			box.append(grid,
 				htmlEl('div', {class: 'bm-icons-head'}, [
-					htmlEl('span', {text: 'Icônes personnalisées'}),
-					htmlEl('button', {type: 'button', class: 'btn-alt bm-mini-btn', text: '+ Ajouter',
-						title: 'SVG, PNG, JPEG, GIF ou WebP, 1 Mo au maximum', onclick: () => file.click()}),
+					htmlEl('span', {text: t('Custom icons')}),
+					htmlEl('button', {type: 'button', class: 'btn-alt bm-mini-btn', text: t('+ Add'),
+						title: t('SVG, PNG, JPEG, GIF or WebP, 1 MB max'), onclick: () => file.click()}),
 					file
 				]),
 				customGrid
@@ -3636,7 +3673,7 @@
 		fillCustomIcons(grid, n, select) {
 			if (this.customIcons === null) {
 				grid.textContent = '';
-				grid.append(htmlEl('div', {class: 'bm-icons-empty', text: 'Chargement…'}));
+				grid.append(htmlEl('div', {class: 'bm-icons-empty', text: t('Loading…')}));
 				this.loadingIcons = this.loadingIcons || post('bettermap.icon.list', {})
 					.then(res => {
 						if (res.error) {
@@ -3657,14 +3694,14 @@
 			grid.textContent = '';
 
 			if (!this.customIcons.length) {
-				grid.append(htmlEl('div', {class: 'bm-icons-empty', text: 'Aucune pour l\'instant.'}));
+				grid.append(htmlEl('div', {class: 'bm-icons-empty', text: t('None yet.')}));
 			}
 
 			for (const icon of this.customIcons) {
 				const key = CUSTOM_ICON + icon.iconid;
 				const b = htmlEl('button', {type: 'button', class: 'bm-icon-btn' + (n.icon === key ? ' bm-active' : ''),
 					title: icon.name}, [htmlEl('img', {src: customIconUrl(icon.iconid), alt: icon.name})]);
-				const del = htmlEl('span', {class: 'bm-icon-del', title: 'Supprimer cette icône', text: '×'});
+				const del = htmlEl('span', {class: 'bm-icon-del', title: t('Delete this icon'), text: '×'});
 
 				del.addEventListener('click', e => {
 					e.stopPropagation();
@@ -3682,7 +3719,7 @@
 
 			for (const f of files) {
 				if (f.size > ICON_MAX_SIZE) {
-					this.notify('« ' + f.name + ' » dépasse 1 Mo.', true);
+					this.notify(t('"{name}" exceeds 1 MB.', {name: f.name}), true);
 					continue;
 				}
 
@@ -3703,12 +3740,12 @@
 					last = res.icon;
 				}
 				catch (err) {
-					this.notify('« ' + f.name + ' » : ' + err.message, true);
+					this.notify(t('"{name}": {error}', {name: f.name, error: err.message}), true);
 				}
 			}
 
 			if (last) {
-				this.notify(files.length > 1 ? 'Icônes ajoutées.' : 'Icône ajoutée.');
+				this.notify(files.length > 1 ? t('Icons added.') : t('Icon added.'));
 			}
 
 			return last;
@@ -3719,9 +3756,9 @@
 			const key = CUSTOM_ICON + icon.iconid;
 			const here = this.doc.nodes.filter(x => x.icon === key).length;
 
-			if (!confirm('Supprimer l\'icône « ' + icon.name + ' » ?\n\n'
-					+ (here ? here + ' nœud(s) de cette carte l\'utilise(nt). ' : '')
-					+ 'Sur toutes les cartes, les nœuds qui l\'utilisent afficheront l\'icône générique.')) {
+			if (!confirm(t('Delete the icon "{name}"?', {name: icon.name}) + '\n\n'
+					+ (here ? t('{count} node(s) on this map use it.', {count: here}) + ' ' : '')
+					+ t('On all maps, the nodes that use it will show the generic icon.'))) {
 				return Promise.resolve(false);
 			}
 
@@ -3745,11 +3782,11 @@
 		}
 
 		panelNode(n) {
-			const typeNames = {host: 'Hôte Zabbix', group: 'Groupe d\'hôtes', item: 'Item', trigger: 'Déclencheur',
-				shape: 'Forme / zone', text: 'Texte'};
+			const typeNames = {host: t('Zabbix host'), group: t('Host group'), item: t('Item'), trigger: t('Trigger'),
+				shape: t('Shape / area'), text: t('Text')};
 			const s1 = this.section(typeNames[n.type]);
 
-			this.row(s1, 'Type', this.selectField(n, 'type', typeNames, {
+			this.row(s1, t('Type'), this.selectField(n, 'type', typeNames, {
 				panel: true,
 				after: type => {
 					for (const [k, v] of Object.entries(NODE_DEFAULTS[type])) {
@@ -3761,7 +3798,7 @@
 			}));
 
 			if (n.type === 'host' || isHostChild(n)) {
-				this.row(s1, 'Hôte', this.picker(n, 'host', 'hostid', 'hostname', {
+				this.row(s1, t('Host'), this.picker(n, 'host', 'hostid', 'hostname', {
 					after: () => {
 						if (!isHostChild(n)) {
 							return;
@@ -3788,86 +3825,87 @@
 			}
 
 			if (n.type === 'group') {
-				this.row(s1, 'Groupe', this.picker(n, 'group', 'groupid', 'groupname'));
+				this.row(s1, t('Group'), this.picker(n, 'group', 'groupid', 'groupname'));
 			}
 
-			this.row(s1, 'Libellé', this.textField(n, 'label', {
+			this.row(s1, t('Label'), this.textField(n, 'label', {
 				multiline: true, focus: true,
-				placeholder: {host: 'Nom de l\'hôte par défaut', group: 'Nom du groupe par défaut',
-					item: 'Nom de l\'item par défaut', trigger: 'Nom du déclencheur par défaut'}[n.type] || ''
+				placeholder: {host: t('Host name by default'), group: t('Group name by default'),
+					item: t('Item name by default'), trigger: t('Trigger name by default')}[n.type] || ''
 			}));
 
 			if (isDevice(n) && !isIconless(n)) {
-				const def = LABEL_POSITIONS[this.doc.settings.labelPos].toLowerCase();
+				const pos = labelPositions();
+				const def = pos[this.doc.settings.labelPos].toLowerCase();
 
-				this.row(s1, 'Emplacement', this.selectField(n, 'labelPos', {'': 'Par défaut (' + def + ')',
-					bottom: 'En bas', left: 'À gauche', right: 'À droite', top: 'En haut'}));
+				this.row(s1, t('Position'), this.selectField(n, 'labelPos', {'': t('Default ({position})', {position: def}),
+					bottom: pos.bottom, left: pos.left, right: pos.right, top: pos.top}));
 			}
 
 			if (isDevice(n)) {
-				const s = this.section('Icône');
+				const s = this.section(t('Icon'));
 
 				s.append(this.iconPicker(n));
 			}
 
 			if (hasTextStyle(n)) {
-				const st = this.section('Mise en forme du texte');
+				const st = this.section(t('Text formatting'));
 
-				this.row(st, 'Police', this.selectField(n, 'font',
-					Object.fromEntries(Object.entries(FONTS).map(([k, f]) => [k, f.name]))));
-				this.row(st, 'Taille', this.numberField(n, 'fontSize', 6, 96));
-				this.row(st, 'Couleur', this.colorField(n, 'color', '#1f2c33'));
-				this.row(st, 'Style', htmlEl('span', {class: 'bm-seg'}, [
-					this.toggleField(n, 'bold', 'G', 'Gras', 'font-weight: bold'),
-					this.toggleField(n, 'italic', 'I', 'Italique', 'font-style: italic'),
-					this.toggleField(n, 'underline', 'S', 'Souligné', 'text-decoration: underline')
+				this.row(st, t('Font'), this.selectField(n, 'font',
+					Object.fromEntries(Object.entries(FONTS).map(([k, f]) => [k, t(f.name)]))));
+				this.row(st, t('Size'), this.numberField(n, 'fontSize', 6, 96));
+				this.row(st, t('Color'), this.colorField(n, 'color', '#1f2c33'));
+				this.row(st, t('Style'), htmlEl('span', {class: 'bm-seg'}, [
+					this.toggleField(n, 'bold', t('B'), t('Bold'), 'font-weight: bold'),
+					this.toggleField(n, 'italic', t('I'), t('Italic'), 'font-style: italic'),
+					this.toggleField(n, 'underline', t('U'), t('Underline'), 'text-decoration: underline')
 				]));
-				this.row(st, 'Horizontal', this.choiceField(n, 'align', [
-					['left', ALIGN_ICONS.left, 'Aligné à gauche'],
-					['center', ALIGN_ICONS.center, 'Centré'],
-					['right', ALIGN_ICONS.right, 'Aligné à droite']
+				this.row(st, t('Horizontal'), this.choiceField(n, 'align', [
+					['left', ALIGN_ICONS.left, t('Left-aligned')],
+					['center', ALIGN_ICONS.center, t('Centered')],
+					['right', ALIGN_ICONS.right, t('Right-aligned')]
 				]));
-				this.row(st, 'Vertical', this.choiceField(n, 'valign', [
-					['top', ALIGN_ICONS.top, 'En haut'],
-					['middle', ALIGN_ICONS.middle, 'Au milieu'],
-					['bottom', ALIGN_ICONS.bottom, 'En bas']
+				this.row(st, t('Vertical'), this.choiceField(n, 'valign', [
+					['top', ALIGN_ICONS.top, t('Top')],
+					['middle', ALIGN_ICONS.middle, t('Middle')],
+					['bottom', ALIGN_ICONS.bottom, t('Bottom')]
 				]));
 			}
 
-			const s2 = this.section('Apparence');
+			const s2 = this.section(t('Appearance'));
 
 			if (n.type !== 'text') {
-				this.row(s2, 'Forme', this.selectField(n, 'shape', {round: 'Rectangle arrondi', rect: 'Rectangle',
-					ellipse: 'Ellipse'}));
+				this.row(s2, t('Shape'), this.selectField(n, 'shape', {round: t('Rounded rectangle'), rect: t('Rectangle'),
+					ellipse: t('Ellipse')}));
 			}
 
 			const size = htmlEl('span', {class: 'bm-inline'}, [
 				this.numberField(n, 'w', 12, 4000), htmlEl('span', {text: '×'}), this.numberField(n, 'h', 12, 4000)
 			]);
 
-			this.row(s2, 'Taille', size);
-			this.row(s2, 'Fond', this.colorField(n, 'fill', n.type === 'shape' ? '#f3f6f9' : '#ffffff'));
-			this.row(s2, 'Bordure', this.colorField(n, 'stroke', '#9aa7b4'));
+			this.row(s2, t('Size'), size);
+			this.row(s2, t('Background'), this.colorField(n, 'fill', n.type === 'shape' ? '#f3f6f9' : '#ffffff'));
+			this.row(s2, t('Border'), this.colorField(n, 'stroke', '#9aa7b4'));
 
 			// Une image personnalisée garde ses couleurs.
 			if (isDevice(n) && !isIconless(n) && !customIconId(n.icon)) {
-				this.row(s2, 'Icône', this.colorField(n, 'iconColor', '#40525e'));
+				this.row(s2, t('Icon'), this.colorField(n, 'iconColor', '#40525e'));
 			}
 
 			if (!hasTextStyle(n)) {
-				this.row(s2, 'Texte', this.colorField(n, 'color', '#1f2c33'));
-				this.row(s2, 'Taille texte', this.numberField(n, 'fontSize', 6, 96));
+				this.row(s2, t('Text'), this.colorField(n, 'color', '#1f2c33'));
+				this.row(s2, t('Text size'), this.numberField(n, 'fontSize', 6, 96));
 			}
 
-			this.row(s2, 'Lien (URL)', this.textField(n, 'url', {placeholder: 'https://… ou autre carte'}));
+			this.row(s2, t('Link (URL)'), this.textField(n, 'url', {placeholder: t('https://… or another map')}));
 
-			const s3 = this.section('Actions');
+			const s3 = this.section(t('Actions'));
 
 			this.buttons(s3, [
-				['Premier plan', () => this.reorder(true)],
-				['Arrière-plan', () => this.reorder(false)],
-				['Dupliquer', () => this.duplicate(), '', 'Ctrl+D'],
-				['Supprimer', () => this.deleteSelection(), 'bm-danger', 'Suppr']
+				[t('Bring to front'), () => this.reorder(true)],
+				[t('Send to back'), () => this.reorder(false)],
+				[t('Duplicate'), () => this.duplicate(), '', 'Ctrl+D'],
+				[t('Delete'), () => this.deleteSelection(), 'bm-danger', t('Del')]
 			]);
 		}
 
@@ -3876,34 +3914,34 @@
 			const st = this.triggerState(el.dataset.triggerid);
 
 			el.className = 'bm-trig-state bm-trig-' + st.state;
-			el.textContent = st.state === 'problem' ? SEVERITIES[st.severity].name : this.triggerStateText(el.dataset.triggerid);
+			el.textContent = st.state === 'problem' ? sevName(st.severity) : this.triggerStateText(el.dataset.triggerid);
 			el.title = this.triggerStateText(el.dataset.triggerid);
 			el.style.background = st.state === 'problem' ? SEVERITIES[st.severity].color : '';
 		}
 
 		// Déclencheurs qui colorent le lien : liste avec suppression, puis ajout en deux temps (hôte, déclencheur).
 		panelLinkTriggers(parent, l) {
-			parent.append(htmlEl('div', {class: 'bm-row-label', text: 'Déclencheurs'}));
+			parent.append(htmlEl('div', {class: 'bm-row-label', text: t('Triggers')}));
 
 			const list = htmlEl('div', {class: 'bm-trig-list'});
 
 			if (!l.triggers.length) {
-				list.append(htmlEl('div', {class: 'bm-trig-empty', text: 'Aucun déclencheur'}));
+				list.append(htmlEl('div', {class: 'bm-trig-empty', text: t('No triggers')}));
 			}
 
-			l.triggers.forEach((t, i) => {
-				const state = htmlEl('span', {'data-triggerid': t.triggerid});
+			l.triggers.forEach((tr, i) => {
+				const state = htmlEl('span', {'data-triggerid': tr.triggerid});
 
-				const live = this.status.triggers[t.triggerid];
+				const live = this.status.triggers[tr.triggerid];
 
 				this.fillTriggerState(state);
-				list.append(htmlEl('div', {class: 'bm-trig', title: this.triggerText(t)}, [
+				list.append(htmlEl('div', {class: 'bm-trig', title: this.triggerText(tr)}, [
 					htmlEl('span', {class: 'bm-trig-name'}, [
-						htmlEl('span', {class: 'bm-trig-title', text: live ? live.name : t.triggername}),
-						htmlEl('span', {class: 'bm-trig-host', text: live ? live.host : t.hostname})
+						htmlEl('span', {class: 'bm-trig-title', text: live ? live.name : tr.triggername}),
+						htmlEl('span', {class: 'bm-trig-host', text: live ? live.host : tr.hostname})
 					]),
 					state,
-					htmlEl('button', {type: 'button', class: 'bm-trig-del', title: 'Retirer ce déclencheur', text: '×',
+					htmlEl('button', {type: 'button', class: 'bm-trig-del', title: t('Remove this trigger'), text: '×',
 						onclick: e => {
 							e.preventDefault();
 							this.checkpoint();
@@ -3928,7 +3966,7 @@
 				input && input.focus();
 			};
 
-			this.row(parent, 'Hôte', this.picker(draft, 'host', 'hostid', 'hostname', {
+			this.row(parent, t('Host'), this.picker(draft, 'host', 'hostid', 'hostname', {
 				draft: true,
 				after: () => {
 					draft.triggerid = '';
@@ -3937,7 +3975,7 @@
 					focusTrigger();
 				}
 			}));
-			this.row(parent, 'Ajouter', this.picker(draft, 'trigger', 'triggerid', 'triggername', {
+			this.row(parent, t('Add'), this.picker(draft, 'trigger', 'triggerid', 'triggername', {
 				draft: true,
 				params: {hostid: draft.hostid},
 				disabled: !draft.hostid,
@@ -3958,29 +3996,29 @@
 
 		panelLink(l) {
 			const a = this.node(l.from), b = this.node(l.to);
-			const s1 = this.section('Lien');
+			const s1 = this.section(t('Link'));
 
 			s1.append(htmlEl('div', {class: 'bm-link-ends', text: this.nodeLabel(a) + '  →  ' + this.nodeLabel(b)}));
 
-			this.row(s1, 'Tracé', this.selectField(l, 'style', {curve: 'Courbe', straight: 'Droit', orthogonal: 'Orthogonal'},
+			this.row(s1, t('Routing'), this.selectField(l, 'style', linkStyles(),
 				{panel: true}));
 
 			if (l.style !== 'curve') {
-				this.row(s1, 'Coins arrondis', this.checkField(l, 'rounded'));
+				this.row(s1, t('Rounded corners'), this.checkField(l, 'rounded'));
 			}
 
-			this.row(s1, 'Libellé', this.textField(l, 'label', {multiline: true, focus: true, placeholder: 'ex : 10 Gb/s'}));
+			this.row(s1, t('Label'), this.textField(l, 'label', {multiline: true, focus: true, placeholder: t('e.g. 10 Gb/s')}));
 
-			const ends = this.section('Extrémités');
+			const ends = this.section(t('Ends'));
 			const endRow = (label, key) => {
 				const fixed = !!l[key];
 
 				// div plutôt que label : un clic sur l'intitulé ne doit pas déclencher le bouton.
 				ends.append(htmlEl('div', {class: 'bm-row'}, [htmlEl('span', {class: 'bm-row-label', text: label}),
 					htmlEl('span', {class: 'bm-inline'}, [
-					htmlEl('span', {class: 'bm-end-state', text: fixed ? 'point fixe' : 'flottante'}),
-					fixed ? htmlEl('button', {type: 'button', class: 'btn-alt bm-mini-btn', text: 'Libérer',
-						title: 'L\'extrémité suivra le côté le plus proche du nœud',
+					htmlEl('span', {class: 'bm-end-state', text: fixed ? t('fixed point') : t('floating')}),
+					fixed ? htmlEl('button', {type: 'button', class: 'btn-alt bm-mini-btn', text: t('Release'),
+						title: t('The end will follow the nearest side of the node'),
 						onclick: () => {
 							this.checkpoint();
 							l[key] = null;
@@ -3990,53 +4028,52 @@
 				])]));
 			};
 
-			endRow('Départ', 'fromPort');
-			endRow('Arrivée', 'toPort');
-			ends.append(htmlEl('div', {class: 'bm-hint', text: 'Déposez une extrémité sur un point bleu pour la fixer, '
-				+ 'ou au milieu du nœud pour qu\'elle reste flottante.'}));
+			endRow(t('Start'), 'fromPort');
+			endRow(t('End'), 'toPort');
+			ends.append(htmlEl('div', {class: 'bm-hint', text: t('Drop an end on a blue point to fix it, or in the middle of the node to keep it floating.')}));
 
-			const s2 = this.section('Apparence');
+			const s2 = this.section(t('Appearance'));
 
-			this.row(s2, 'Couleur', this.colorField(l, 'color', '#6b7b88'));
-			this.row(s2, 'Épaisseur', this.numberField(l, 'width', 0.5, 20, 0.5));
-			this.row(s2, 'Trait', this.selectField(l, 'dash', {solid: 'Plein', dashed: 'Tirets', dotted: 'Pointillés'}));
-			this.row(s2, 'Flèches', this.selectField(l, 'arrow', {none: 'Aucune', end: 'À l\'arrivée', start: 'Au départ',
-				both: 'Aux deux bouts'}));
-			this.row(s2, 'Taille texte', this.numberField(l, 'fontSize', 6, 72));
+			this.row(s2, t('Color'), this.colorField(l, 'color', '#6b7b88'));
+			this.row(s2, t('Width'), this.numberField(l, 'width', 0.5, 20, 0.5));
+			this.row(s2, t('Line'), this.selectField(l, 'dash', {solid: t('Solid'), dashed: t('Dashed'), dotted: t('Dotted')}));
+			this.row(s2, t('Arrows'), this.selectField(l, 'arrow', {none: t('None'), end: t('At the end'), start: t('At the start'),
+				both: t('At both ends')}));
+			this.row(s2, t('Text size'), this.numberField(l, 'fontSize', 6, 72));
 
-			const s3 = this.section('Statut');
+			const s3 = this.section(t('Status'));
 
-			this.row(s3, 'Déclenchement', this.selectField(l, 'status', {
-				both: 'Les deux extrémités', from: 'Le nœud de départ', to: 'Le nœud d\'arrivée',
-				triggers: 'Autre(s) déclencheur(s)', none: 'Jamais'
+			this.row(s3, t('Triggered by'), this.selectField(l, 'status', {
+				both: t('Both end nodes'), from: t('The start node'), to: t('The end node'),
+				triggers: t('Other trigger(s)'), none: t('Never')
 			}, {panel: true, after: () => this.refreshStatus()}));
 
 			if (l.status === 'triggers') {
-				this.row(s3, 'Condition', this.selectField(l, 'triggerLogic', {
-					or: 'OU : au moins un en problème', and: 'ET : tous en problème'
+				this.row(s3, t('Condition'), this.selectField(l, 'triggerLogic', {
+					or: t('OR: at least one in problem'), and: t('AND: all in problem')
 				}, {panel: true}));
 				this.panelLinkTriggers(s3, l);
 			}
 
 			s3.append(htmlEl('div', {class: 'bm-hint', text: l.status !== 'triggers'
-				? 'Le lien prend la couleur de la sévérité la plus haute des problèmes des nœuds choisis '
-					+ '(hôtes, groupes, items ou déclencheurs).'
+				? t('The link takes the color of the highest severity among the problems of the selected nodes '
+					+ '(hosts, groups, items or triggers).')
 				: l.triggerLogic === 'and'
-					? 'Le lien ne passe en problème que si tous les déclencheurs ci-dessus sont en problème, '
-						+ 'avec la couleur de la sévérité la plus haute.'
-					: 'Le lien passe en problème dès qu\'un des déclencheurs ci-dessus l\'est, '
-						+ 'avec la couleur de la sévérité la plus haute.'}));
+					? t('The link only goes into problem when all the triggers above are in problem, '
+						+ 'with the color of the highest severity.')
+					: t('The link goes into problem as soon as one of the triggers above is, '
+						+ 'with the color of the highest severity.')}));
 
-			const s4 = this.section('Actions');
+			const s4 = this.section(t('Actions'));
 
 			this.buttons(s4, [
-				l.points.length ? ['Redresser', () => {
+				l.points.length ? [t('Straighten'), () => {
 					this.checkpoint();
 					l.points = [];
 					this.render();
 					this.renderPanel();
-				}, '', 'Supprimer tous les points de passage'] : null,
-				['Inverser', () => {
+				}, '', t('Remove all waypoints')] : null,
+				[t('Reverse'), () => {
 					this.checkpoint();
 					[l.from, l.to] = [l.to, l.from];
 					[l.fromPort, l.toPort] = [l.toPort, l.fromPort];
@@ -4044,48 +4081,47 @@
 					l.labelPos = 1 - l.labelPos;
 					this.render();
 					this.renderPanel();
-				}, '', 'Inverser le sens du lien'],
-				['Supprimer', () => this.deleteSelection(), 'bm-danger']
+				}, '', t('Reverse the link direction')],
+				[t('Delete'), () => this.deleteSelection(), 'bm-danger']
 			]);
 			s4.append(htmlEl('div', {class: 'bm-hint', text: l.style === 'orthogonal'
-				? 'Glissez une poignée de segment pour le décaler, double-cliquez-la pour le supprimer. « Redresser » relance le tracé automatique. '
-					+ 'Le libellé se déplace le long du lien.'
-				: 'Glissez le lien pour le courber. Double-clic sur un point pour le retirer. Le libellé se déplace '
-					+ 'le long du lien.'}));
+				? t('Drag a segment handle to shift it, double-click it to remove it. "Straighten" restores automatic routing. '
+					+ 'The label can be dragged along the link.')
+				: t('Drag the link to bend it. Double-click a point to remove it. The label can be dragged '
+					+ 'along the link.')}));
 		}
 
 		panelMulti(nodes, links) {
-			const s = this.section(nodes.length + ' nœud(s), ' + links.length + ' lien(s)');
+			const s = this.section(t('{nodes} node(s), {links} link(s)', {nodes: nodes.length, links: links.length}));
 
 			if (nodes.length > 1) {
-				s.append(htmlEl('div', {class: 'bm-row-label', text: 'Aligner'}));
+				s.append(htmlEl('div', {class: 'bm-row-label', text: t('Align')}));
 				this.buttons(s, [
-					['⇤', () => this.align('left'), '', 'Aligner à gauche'],
-					['↔', () => this.align('hcenter'), '', 'Centrer horizontalement'],
-					['⇥', () => this.align('right'), '', 'Aligner à droite'],
-					['⤒', () => this.align('top'), '', 'Aligner en haut'],
-					['↕', () => this.align('vcenter'), '', 'Centrer verticalement'],
-					['⤓', () => this.align('bottom'), '', 'Aligner en bas']
+					['⇤', () => this.align('left'), '', t('Align left')],
+					['↔', () => this.align('hcenter'), '', t('Center horizontally')],
+					['⇥', () => this.align('right'), '', t('Align right')],
+					['⤒', () => this.align('top'), '', t('Align top')],
+					['↕', () => this.align('vcenter'), '', t('Center vertically')],
+					['⤓', () => this.align('bottom'), '', t('Align bottom')]
 				]);
 			}
 
 			if (nodes.length > 2) {
-				s.append(htmlEl('div', {class: 'bm-row-label', text: 'Répartir'}));
+				s.append(htmlEl('div', {class: 'bm-row-label', text: t('Distribute')}));
 				this.buttons(s, [
-					['Horizontalement', () => this.align('hdist')],
-					['Verticalement', () => this.align('vdist')]
+					[t('Horizontally'), () => this.align('hdist')],
+					[t('Vertically'), () => this.align('vdist')]
 				]);
 			}
 
 			if (links.length) {
-				const s2 = this.section('Liens sélectionnés');
+				const s2 = this.section(t('Selected links'));
 				const proxy = {style: links[0].style, color: links[0].color, width: links[0].width};
 				const applyAll = key => {
 					links.forEach(l => l[key] = proxy[key]);
 				};
 
-				this.row(s2, 'Tracé', this.selectField(proxy, 'style', {curve: 'Courbe', straight: 'Droit',
-					orthogonal: 'Orthogonal'}, {after: () => applyAll('style')}));
+				this.row(s2, t('Routing'), this.selectField(proxy, 'style', linkStyles(), {after: () => applyAll('style')}));
 
 				const width = this.numberField(proxy, 'width', 0.5, 20, 0.5);
 
@@ -4093,22 +4129,22 @@
 					applyAll('width');
 					this.render();
 				});
-				this.row(s2, 'Épaisseur', width);
+				this.row(s2, t('Width'), width);
 			}
 
-			const s3 = this.section('Actions');
+			const s3 = this.section(t('Actions'));
 
 			this.buttons(s3, [
-				nodes.length ? ['Premier plan', () => this.reorder(true)] : null,
-				nodes.length ? ['Arrière-plan', () => this.reorder(false)] : null,
-				nodes.length ? ['Dupliquer', () => this.duplicate()] : null,
-				['Supprimer', () => this.deleteSelection(), 'bm-danger']
+				nodes.length ? [t('Bring to front'), () => this.reorder(true)] : null,
+				nodes.length ? [t('Send to back'), () => this.reorder(false)] : null,
+				nodes.length ? [t('Duplicate'), () => this.duplicate()] : null,
+				[t('Delete'), () => this.deleteSelection(), 'bm-danger']
 			]);
 		}
 
 		panelMap() {
 			const st = this.doc.settings;
-			const s1 = this.section('Carte');
+			const s1 = this.section(t('Map'));
 			const name = htmlEl('input', {type: 'text', value: this.name, maxlength: 255});
 
 			name.addEventListener('input', () => {
@@ -4118,24 +4154,23 @@
 					this.buildToolbar();
 				}
 			});
-			this.row(s1, 'Nom', name);
-			this.row(s1, 'Fond', this.colorField(st, 'background', '#ffffff'));
-			this.row(s1, 'Liens par défaut', this.selectField(st, 'linkStyle', {curve: 'Courbe', straight: 'Droit',
-				orthogonal: 'Orthogonal'}));
-			this.row(s1, 'Libellés des hôtes', this.selectField(st, 'labelPos', LABEL_POSITIONS));
-			this.row(s1, 'Rafraîchir (s)', this.bind(htmlEl('input', {type: 'number', value: st.refresh, min: 10, max: 3600,
+			this.row(s1, t('Name'), name);
+			this.row(s1, t('Background'), this.colorField(st, 'background', '#ffffff'));
+			this.row(s1, t('Default links'), this.selectField(st, 'linkStyle', linkStyles()));
+			this.row(s1, t('Host labels'), this.selectField(st, 'labelPos', labelPositions()));
+			this.row(s1, t('Refresh (s)'), this.bind(htmlEl('input', {type: 'number', value: st.refresh, min: 10, max: 3600,
 				class: 'bm-num'}), 'change', el => {
 				st.refresh = clamp(parseInt(el.value, 10) || 30, 10, 3600);
 				this.startTimer();
 			}));
 
-			const s2 = this.section('Grille');
+			const s2 = this.section(t('Grid'));
 
-			this.row(s2, 'Afficher', this.checkField(st, 'grid'));
-			this.row(s2, 'Magnétisme', this.checkField(st, 'snap'));
-			this.row(s2, 'Pas', this.numberField(st, 'gridSize', 2, 200));
+			this.row(s2, t('Show'), this.checkField(st, 'grid'));
+			this.row(s2, t('Snap to grid'), this.checkField(st, 'snap'));
+			this.row(s2, t('Step'), this.numberField(st, 'gridSize', 2, 200));
 
-			const s3 = this.section('Sauvegarde');
+			const s3 = this.section(t('Backup'));
 			const file = htmlEl('input', {type: 'file', accept: '.json,application/json', hidden: true});
 
 			file.addEventListener('change', () => {
@@ -4154,12 +4189,12 @@
 					this.fit();
 					this.renderPanel();
 					this.refreshStatus();
-					this.notify('Carte importée (pensez à enregistrer)');
-				}).catch(() => this.notify('Fichier JSON invalide', true));
+					this.notify(t('Map imported (remember to save)'));
+				}).catch(() => this.notify(t('Invalid JSON file'), true));
 			});
 			s3.append(file);
 			this.buttons(s3, [
-				['Exporter JSON', () => {
+				[t('Export JSON'), () => {
 					const blob = new Blob([JSON.stringify(this.doc, null, 2)], {type: 'application/json'});
 					const a = htmlEl('a', {href: URL.createObjectURL(blob),
 						download: this.name.replace(/[^\w\-]+/g, '_') + '.json'});
@@ -4169,20 +4204,20 @@
 					a.remove();
 					setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 				}],
-				['Importer JSON', () => file.click()]
+				[t('Import JSON'), () => file.click()]
 			]);
 
-			const s4 = this.section('Aide');
+			const s4 = this.section(t('Help'));
 
 			s4.append(htmlEl('ul', {class: 'bm-help'}, [
-				'Survolez un nœud et tirez depuis un de ses points bleus : sur un point bleu d\'un autre nœud, le lien y est '
-					+ 'fixé ; au milieu du nœud, il reste flottant ; dans le vide, un nouveau nœud est créé.',
-				'Glissez un lien pour le courber ; chaque point ajouté peut être déplacé, double-clic pour le retirer.',
-				'Liens orthogonaux : tracé automatique, glissez les poignées de segment pour le modifier.',
-				'Glissez dans le vide pour sélectionner plusieurs éléments (Maj pour ajouter).',
-				'Molette : zoom · Espace + glisser ou clic droit : déplacer la vue.',
-				'Ctrl+Z / Ctrl+Y · Ctrl+C / Ctrl+V · Ctrl+D · Suppr · flèches · Ctrl+S'
-			].map(t => htmlEl('li', {text: t}))));
+				t('Hover over a node and drag from one of its blue points: on a blue point of another node, the link is '
+					+ 'attached to it; in the middle of the node, it stays floating; in empty space, a new node is created.'),
+				t('Drag a link to bend it; each added point can be moved, double-click to remove it.'),
+				t('Orthogonal links: automatic routing, drag the segment handles to change it.'),
+				t('Drag in empty space to select several elements (Shift to add).'),
+				t('Mouse wheel: zoom · Space + drag or right-click: move the view.'),
+				t('Ctrl+Z / Ctrl+Y · Ctrl+C / Ctrl+V · Ctrl+D · Del · arrows · Ctrl+S')
+			].map(text => htmlEl('li', {text}))));
 		}
 	}
 
@@ -4231,7 +4266,7 @@
 				return;
 			}
 
-			if (!confirm('Supprimer la carte « ' + del.dataset.name + ' » ?')) {
+			if (!confirm(t('Delete the map "{name}"?', {name: del.dataset.name}))) {
 				return;
 			}
 

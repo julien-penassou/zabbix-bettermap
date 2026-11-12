@@ -4,6 +4,7 @@ namespace Modules\BetterMaps\Actions;
 
 use Modules\BetterMaps\Lib\Access;
 use Modules\BetterMaps\Lib\JsonController;
+use Modules\BetterMaps\Lib\Lang;
 use Modules\BetterMaps\Lib\MapStorage;
 
 class MapDelete extends JsonController {
@@ -23,6 +24,6 @@ class MapDelete extends JsonController {
 	protected function doAction(): void {
 		$ok = MapStorage::delete($this->getInput('mapid'));
 
-		$this->respond($ok ? ['result' => true] : ['error' => 'Échec de la suppression.']);
+		$this->respond($ok ? ['result' => true] : ['error' => Lang::t('Deletion failed.')]);
 	}
 }

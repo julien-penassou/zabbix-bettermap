@@ -5,6 +5,7 @@ namespace Modules\BetterMaps\Actions;
 use CController;
 use CControllerResponseData;
 use Modules\BetterMaps\Lib\Access;
+use Modules\BetterMaps\Lib\Lang;
 use Modules\BetterMaps\Lib\MapStorage;
 
 class MapList extends CController {
@@ -38,7 +39,7 @@ class MapList extends CController {
 			'csrf_token' => Access::csrfToken(),
 			'error' => $error
 		]);
-		$response->setTitle('Cartes+');
+		$response->setTitle(Lang::t('Maps+'));
 		$this->setResponse($response);
 	}
 }

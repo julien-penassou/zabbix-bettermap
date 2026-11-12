@@ -5,6 +5,8 @@
  * @var array $data
  */
 
+use Modules\BetterMaps\Lib\Lang;
+
 $map = $data['map'];
 
 $config = [
@@ -21,7 +23,7 @@ $config = [
 	->setTitle($map['name'])
 	->setNavigation(
 		(new CList())->addItem(
-			new CLink('← Toutes les cartes', (new CUrl('zabbix.php'))->setArgument('action', 'bettermap.list'))
+			new CLink(Lang::t('← All maps'), (new CUrl('zabbix.php'))->setArgument('action', 'bettermap.list'))
 		)
 	)
 	->addItem(Modules\BetterMaps\Lib\Assets::tags())

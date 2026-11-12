@@ -4,6 +4,7 @@ namespace Modules\BetterMaps\Actions;
 
 use CController;
 use Modules\BetterMaps\Lib\IconStorage;
+use Modules\BetterMaps\Lib\Lang;
 
 /**
  * Contenu d'une icône personnalisée, pour les cartes et le widget de tout utilisateur connecté.
@@ -59,7 +60,7 @@ class IconView extends CController {
 
 		http_response_code(404);
 		header('Content-Type: text/plain; charset=utf-8');
-		echo 'Icône introuvable.';
+		echo Lang::t('Icon not found.');
 		exit;
 	}
 }

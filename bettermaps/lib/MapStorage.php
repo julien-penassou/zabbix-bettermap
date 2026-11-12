@@ -45,8 +45,8 @@ class MapStorage {
 				')';
 
 			if (!DBexecute($sql)) {
-				throw new \RuntimeException('Impossible de créer la table '.self::TABLE.
-					'. Créez-la manuellement avec le script sql/ fourni avec le module.'
+				throw new \RuntimeException(Lang::t('Unable to create table {table}. Create it manually with the script in the '.
+					'module\'s sql/ folder.', ['table' => self::TABLE])
 				);
 			}
 		}

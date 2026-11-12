@@ -5,6 +5,7 @@ namespace Modules\BetterMaps\Actions;
 use CControllerDashboardWidgetView;
 use CControllerResponseData;
 use Modules\BetterMaps\Lib\Access;
+use Modules\BetterMaps\Lib\Lang;
 use Modules\BetterMaps\Lib\MapStorage;
 use Modules\BetterMaps\Lib\Status;
 
@@ -19,14 +20,14 @@ class WidgetView extends CControllerDashboardWidgetView {
 		$name = $this->getInput('name', '');
 
 		if (!Access::canView()) {
-			$error = 'Vous n\'avez pas accès aux cartes.';
+			$error = Lang::t('You do not have access to maps.');
 		}
 		else {
 			$mapid = (string) $this->fields_values['mapid'];
 			$map = $mapid !== '' ? MapStorage::get($mapid) : null;
 
 			if ($map === null) {
-				$error = 'Carte introuvable : choisissez une carte dans la configuration du widget.';
+				$error = Lang::t('Map not found: choose a map in the widget configuration.');
 			}
 			else {
 				$doc = json_decode($map['data'], true) ?: [];
