@@ -29,7 +29,7 @@ abstract class JsonController extends CController {
 		}
 
 		if (!$ret) {
-			$this->respond(['error' => 'Requête invalide ou session expirée.']);
+			$this->respond(['error' => Lang::t('Invalid request or session expired.')]);
 		}
 
 		return $ret;

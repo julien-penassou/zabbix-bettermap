@@ -4,6 +4,7 @@ namespace Modules\BetterMaps;
 
 use APP;
 use CMenuItem;
+use Modules\BetterMaps\Lib\Lang;
 use Zabbix\Core\CWidget;
 
 /**
@@ -15,10 +16,10 @@ class Widget extends CWidget {
 		APP::Component()->get('menu.main')
 			->findOrAdd(_('Monitoring'))
 			->getSubmenu()
-			->insertAfter(_('Maps'), (new CMenuItem('Cartes+'))->setAction('bettermap.list'));
+			->insertAfter(_('Maps'), (new CMenuItem(Lang::t('Maps+')))->setAction('bettermap.list'));
 	}
 
 	public function getDefaultName(): string {
-		return 'Carte+';
+		return Lang::t('Map+');
 	}
 }

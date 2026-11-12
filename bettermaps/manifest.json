@@ -3,12 +3,12 @@
 	"id": "bettermaps",
 	"type": "widget",
 	"name": "Better Maps",
-	"version": "1.3",
+	"version": "1.4",
 	"namespace": "BetterMaps",
 	"author": "Julien Penassou",
-	"description": "Cartes réseau façon draw.io (Surveillance › Cartes+) et widget « Carte+ » pour les tableaux de bord.",
+	"description": "draw.io-style network maps (Monitoring › Maps+) and a \"Map+\" dashboard widget.",
 	"widget": {
-		"name": "Carte+",
+		"name": "Map+",
 		"js_class": "CWidgetBetterMap",
 		"refresh_rate": 30,
 		"size": {
@@ -66,6 +66,6 @@
 	},
 	"assets": {
 		"css": ["bettermap.css"],
-		"js": ["bettermap.js", "class.widget.js"]
+		"js": ["lang.fr.js", "bettermap.js", "class.widget.js"]
 	}
 }

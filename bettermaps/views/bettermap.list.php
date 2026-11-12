@@ -5,7 +5,9 @@
  * @var array $data
  */
 
-$page = (new CHtmlPage())->setTitle('Cartes+');
+use Modules\BetterMaps\Lib\Lang;
+
+$page = (new CHtmlPage())->setTitle(Lang::t('Maps+'));
 
 if ($data['can_edit']) {
 	$page->setControls(
@@ -14,11 +16,11 @@ if ($data['can_edit']) {
 				->addItem(
 					(new CTextBox('bm_new_name'))
 						->setId('bm-new-name')
-						->setAttribute('placeholder', 'Nom de la nouvelle carte')
+						->setAttribute('placeholder', Lang::t('New map name'))
 						->setAttribute('maxlength', 255)
 						->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
 				)
-				->addItem((new CSimpleButton('Créer une carte'))->setId('bm-create'))
+				->addItem((new CSimpleButton(Lang::t('Create map')))->setId('bm-create'))
 		))->setAttribute('aria-label', _('Content controls'))
 	);
 }
@@ -28,8 +30,8 @@ if ($data['error'] !== null) {
 }
 
 $table = (new CTableInfo())->setHeader([
-	'Nom',
-	'Dernière modification',
+	Lang::t('Name'),
+	Lang::t('Last modified'),
 	$data['can_edit'] ? _('Actions') : null
 ]);
 

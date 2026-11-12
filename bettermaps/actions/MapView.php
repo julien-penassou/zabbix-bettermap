@@ -6,6 +6,7 @@ use CController;
 use CControllerResponseData;
 use CControllerResponseFatal;
 use Modules\BetterMaps\Lib\Access;
+use Modules\BetterMaps\Lib\Lang;
 use Modules\BetterMaps\Lib\MapStorage;
 
 class MapView extends CController {
@@ -52,7 +53,7 @@ class MapView extends CController {
 			'edit' => $can_edit && $this->getInput('edit', 0) == 1,
 			'csrf_token' => Access::csrfToken()
 		]);
-		$response->setTitle($map['name'].' - Cartes+');
+		$response->setTitle(Lang::t('{name} - Maps+', ['name' => $map['name']]));
 		$this->setResponse($response);
 	}
 }

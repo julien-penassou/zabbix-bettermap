@@ -1,5 +1,7 @@
 # Guide utilisateur : Cartes+ (Better Maps)
 
+🌐 [English](user-guide.md) · **Français**
+
 Cartes+ affiche des schémas de votre réseau dans Zabbix, avec l'état de chaque équipement en temps réel. On y voit d'un coup d'œil ce qui est en panne, où, et à quel point c'est grave. Un clic sur un équipement donne le détail de ses problèmes.
 
 Ce guide s'adresse :

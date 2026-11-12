@@ -50,8 +50,8 @@ class IconStorage {
 			')'.($is_mysql ? ' ENGINE=InnoDB' : '');
 
 			if (!DBexecute($sql)) {
-				throw new \RuntimeException('Impossible de créer la table '.self::TABLE.
-					'. Créez-la manuellement avec le script sql/ fourni avec le module.'
+				throw new \RuntimeException(Lang::t('Unable to create table {table}. Create it manually with the script in the '.
+					'module\'s sql/ folder.', ['table' => self::TABLE])
 				);
 			}
 		}
@@ -105,7 +105,7 @@ class IconStorage {
 	 */
 	public static function create(string $name, string $content): array {
 		if ($content === '' || strlen($content) > self::MAX_SIZE) {
-			throw new \InvalidArgumentException('Fichier vide ou trop volumineux (1 Mo au maximum).');
+			throw new \InvalidArgumentException(Lang::t('Empty or too large file (1 MB max).'));
 		}
 
 		$mime = self::detectMime($content);
@@ -123,7 +123,7 @@ class IconStorage {
 		);
 
 		if (!$ok) {
-			throw new \RuntimeException('Échec de l\'enregistrement de l\'icône.');
+			throw new \RuntimeException(Lang::t('Saving the icon failed.'));
 		}
 
 		return ['iconid' => $iconid, 'name' => $name, 'mime' => $mime];
@@ -163,8 +163,8 @@ class IconStorage {
 	 * @throws \InvalidArgumentException
 	 */
 	private static function checkSvg(string $content): void {
-		$invalid = new \InvalidArgumentException('Format non reconnu : seuls les fichiers SVG, PNG, JPEG, GIF et WebP '.
-			'sont acceptés.'
+		$invalid = new \InvalidArgumentException(
+			Lang::t('Unrecognized format: only SVG, PNG, JPEG, GIF and WebP files are accepted.')
 		);
 
 		if (stripos($content, '<svg') === false) {
@@ -173,7 +173,7 @@ class IconStorage {
 
 		// Pas de DTD : ni entités (XXE, explosion d'entités), ni déclarations externes.
 		if (stripos($content, '<!DOCTYPE') !== false || stripos($content, '<!ENTITY') !== false) {
-			throw new \InvalidArgumentException('SVG refusé : les déclarations DOCTYPE / ENTITY ne sont pas autorisées.');
+			throw new \InvalidArgumentException(Lang::t('SVG rejected: DOCTYPE / ENTITY declarations are not allowed.'));
 		}
 
 		$doc = new \DOMDocument();
@@ -188,7 +188,9 @@ class IconStorage {
 
 		foreach ($doc->getElementsByTagName('*') as $element) {
 			if (in_array(strtolower($element->localName), self::SVG_FORBIDDEN, true)) {
-				throw new \InvalidArgumentException('SVG refusé : il contient un élément <'.$element->localName.'>.');
+				throw new \InvalidArgumentException(Lang::t('SVG rejected: it contains a <{element}> element.',
+					['element' => $element->localName]
+				));
 			}
 
 			foreach ($element->attributes as $attribute) {
@@ -196,25 +198,27 @@ class IconStorage {
 				$value = strtolower(preg_replace('/\s+/', '', $attribute->value));
 
 				if (str_starts_with($attr, 'on')) {
-					throw new \InvalidArgumentException('SVG refusé : il contient un gestionnaire d\'évènement ('.
-						$attribute->localName.').'
-					);
+					throw new \InvalidArgumentException(Lang::t('SVG rejected: it contains an event handler ({attribute}).',
+						['attribute' => $attribute->localName]
+					));
 				}
 
 				// Liens : uniquement internes (#id) ou images embarquées.
 				if ($attr === 'href' && $value !== '' && $value[0] !== '#'
 						&& !preg_match('#^data:image/(png|jpeg|gif|webp);#', $value)) {
-					throw new \InvalidArgumentException('SVG refusé : il fait référence à une ressource externe.');
+					throw new \InvalidArgumentException(Lang::t('SVG rejected: it references an external resource.'));
 				}
 
 				if (self::hasExternalRef($value)) {
-					throw new \InvalidArgumentException('SVG refusé : il fait référence à une ressource externe.');
+					throw new \InvalidArgumentException(Lang::t('SVG rejected: it references an external resource.'));
 				}
 			}
 
 			if (strtolower($element->localName) === 'style'
 					&& self::hasExternalRef(strtolower(preg_replace('/\s+/', '', $element->textContent)))) {
-				throw new \InvalidArgumentException('SVG refusé : sa feuille de style fait référence à une ressource externe.');
+				throw new \InvalidArgumentException(
+					Lang::t('SVG rejected: its stylesheet references an external resource.')
+				);
 			}
 		}
 	}

@@ -1,120 +1,140 @@
-# Better Maps : cartes réseau façon draw.io pour Zabbix 7.2
+# Better Maps: draw.io-style network maps for Zabbix 7.2
 
-Ce module frontend ajoute **Surveillance › Cartes+**, un éditeur de cartes indépendant des cartes natives de Zabbix :
+🌐 **English** · [Français](README.fr.md)
 
-- liens **courbes**, droits ou orthogonaux, qu'on plie en les attrapant à la souris ;
-- gestion des liens inspirée de draw.io : points de connexion fixes ou extrémités flottantes, routage orthogonal automatique à segments déplaçables, coins arrondis, aperçu en direct pendant le tracé ;
-- points de passage déplaçables (aimantés sur l'alignement de leurs voisins), extrémités reconnectables d'un nœud à un autre, libellé déplaçable le long du lien ;
-- liens parallèles (LACP, redondance) écartés automatiquement ;
-- hôtes Zabbix avec icônes vectorielles, pastille de statut et halo pulsant pour les problèmes Haut et Désastre ;
-- icônes personnalisées (SVG, PNG, JPEG, GIF, WebP, 1 Mo au maximum) ajoutées et supprimées depuis l'éditeur, partagées par toutes les cartes ; les SVG contenant des scripts, des gestionnaires d'évènements, une DTD ou des références externes sont refusés ;
-- libellé des hôtes et des groupes en bas, en haut, à gauche ou à droite (réglage par nœud, ou par défaut pour toute la carte), contourné par les liens ; ou pas d'icône du tout, le libellé étant alors écrit dans la boîte ;
-- groupes d'hôtes : statut cumulé des hôtes surveillés du groupe (sévérité la plus haute, nombre de problèmes, hôtes en problème) ;
-- items : dernière valeur affichée en direct (unités et tables de correspondance appliquées), statut d'après les déclencheurs de l'item ;
-- déclencheurs : état OK / PROBLÈME aux couleurs de la sévérité, problèmes actifs au clic ;
-- liens colorés selon la sévérité des problèmes de leurs extrémités (hôte, groupe, item ou déclencheur), ou d'un ou plusieurs autres déclencheurs choisis pour le lien, combinés en OU (au moins un en problème) ou en ET (tous en problème) ;
-- zones (rectangles, ellipses) et textes libres, avec mise en forme du texte : police, taille, couleur, gras, italique, souligné, alignement horizontal (gauche, centre, droite) et vertical (haut, milieu, bas) ;
-- annuler/rétablir, copier/coller (y compris entre deux cartes), alignement et répartition, grille magnétique ;
-- mode visualisation : rafraîchissement automatique, popup au clic sur un nœud ou un lien (état, problèmes, liens vers les problèmes, graphiques et dernières données), plein écran ;
-- export et import JSON ;
-- compatible avec les thèmes clairs et sombres de Zabbix.
+This frontend module adds **Monitoring › Maps+**, a map editor that is independent of Zabbix's built-in maps:
 
-Le même module fournit aussi le widget **Carte+**, qui affiche ces cartes dans un tableau de bord.
+- **curved**, straight or orthogonal links, which you bend by dragging them with the mouse;
+- draw.io-style link handling: fixed connection points or floating ends, automatic orthogonal routing with movable segments, rounded corners, live preview while drawing;
+- movable waypoints (snapping to the alignment of their neighbours), ends that can be reconnected from one node to another, a label that can be moved along the link;
+- parallel links (LACP, redundancy) spread apart automatically;
+- Zabbix hosts with vector icons, a status badge and a pulsing halo for High and Disaster problems;
+- custom icons (SVG, PNG, JPEG, GIF, WebP, 1 MB max) added and deleted from the editor and shared by all maps; SVG files containing scripts, event handlers, a DTD or external references are rejected;
+- host and group labels at the bottom, top, left or right (per node, or as a default for the whole map), with links routed around them; or no icon at all, with the label written inside the box;
+- host groups: combined status of the group's monitored hosts (highest severity, number of problems, hosts in problem);
+- items: latest value shown live (units and value mappings applied), status based on the item's triggers;
+- triggers: OK / PROBLEM state in the severity colours, active problems on click;
+- links coloured by the severity of the problems on their ends (host, group, item or trigger), or of one or more other triggers chosen for the link, combined with OR (at least one in problem) or AND (all in problem);
+- areas (rectangles, ellipses) and free text, with text formatting: font, size, colour, bold, italic, underline, horizontal (left, centre, right) and vertical (top, middle, bottom) alignment;
+- undo/redo, copy/paste (including between two maps), align and distribute, snap to grid;
+- view mode: automatic refresh, popup when clicking a node or a link (state, problems, links to problems, graphs and latest data), full screen;
+- JSON export and import;
+- works with Zabbix's light and dark themes;
+- English and French interface, following the Zabbix language (see [Languages](#languages)).
 
-📖 **[Guide utilisateur](docs/guide-utilisateur.md)** : consulter, créer et modifier les cartes, pas à pas et avec captures d'écran.
+The same module also provides the **Map+** widget, which shows these maps on a dashboard.
+
+📖 **[User guide](docs/user-guide.md)**: viewing, creating and editing maps, step by step with screenshots.
 
 ## Installation
 
-1. Copier le dossier `bettermaps/` dans le dossier `modules/` du frontend Zabbix :
+1. Copy the `bettermaps/` folder into the `modules/` folder of the Zabbix frontend:
    ```bash
    cp -r bettermaps /usr/share/zabbix/modules/
    ```
-   Selon le mode d'installation, ce dossier peut aussi être `/usr/share/zabbix/ui/modules/` ou `/var/www/html/zabbix/modules/`. C'est le dossier qui contient déjà `widgets/`.
-2. Dans Zabbix, aller dans **Administration › Général › Modules**, cliquer sur **Analyser le répertoire**, puis activer **Better Maps**.
-3. Le menu **Surveillance › Cartes+** apparaît, et le type de widget **Carte+** est proposé dans les tableaux de bord.
+   Depending on how Zabbix was installed, this folder may also be `/usr/share/zabbix/ui/modules/` or `/var/www/html/zabbix/modules/`. It is the folder that already contains `widgets/`.
+2. In Zabbix, go to **Administration › General › Modules**, click **Scan directory**, then enable **Better Maps**.
+3. The **Monitoring › Maps+** menu appears, and the **Map+** widget type is available on dashboards.
 
-> **Mise à jour depuis la version 1.0** (deux modules) : supprimer le dossier `bettermapswidget/`, recopier `bettermaps/`, puis cliquer sur **Analyser le répertoire**. Les widgets « Carte+ » ajoutés avec la version 1.0 sont à recréer, car le type de widget a changé de nom. Les cartes elles-mêmes sont conservées.
+> **Upgrading from version 1.0** (two modules): delete the `bettermapswidget/` folder, copy `bettermaps/` again, then click **Scan directory**. Widgets added with version 1.0 must be recreated, because the widget type was renamed. The maps themselves are kept.
 
-Au premier affichage, le module crée une table `bettermaps_map` dans la base Zabbix (PostgreSQL ou MySQL). Si l'utilisateur SQL du frontend n'a pas le droit `CREATE`, créer la table à la main avec [bettermaps/sql/create_table.sql](bettermaps/sql/create_table.sql).
+On first use, the module creates a `bettermaps_map` table in the Zabbix database (PostgreSQL or MySQL). If the frontend's database user does not have the `CREATE` privilege, create the table by hand with [bettermaps/sql/create_table.sql](bettermaps/sql/create_table.sql).
 
-> La table est sauvegardée avec le reste de la base Zabbix. Elle n'est pas touchée par les mises à jour de Zabbix.
+> The table is backed up along with the rest of the Zabbix database. Zabbix upgrades do not touch it.
 
-## Droits
+## Permissions
 
-| Action | Condition |
+| Action | Requirement |
 |---|---|
-| Voir les cartes | accès à l'interface « Surveillance › Cartes » dans le rôle |
-| Créer, modifier, supprimer | type Admin ou Super admin, avec l'action « Créer et modifier les cartes » |
-| Statut des hôtes, groupes, items et déclencheurs | via l'API Zabbix : chacun ne voit que les objets auxquels il a accès |
+| View maps | access to the "Monitoring › Maps" UI element in the user role |
+| Create, edit, delete | Admin or Super admin user type, with the "Create and edit maps" action |
+| Status of hosts, groups, items and triggers | through the Zabbix API: each user only sees the objects they have access to |
 
-## Utilisation de l'éditeur
+## Using the editor
 
-| Geste | Effet |
+| Gesture | Effect |
 |---|---|
-| + Hôte, + Groupe, + Item, + Déclencheur | ajouter un objet Zabbix, à choisir dans le panneau (pour un item ou un déclencheur : l'hôte, puis l'objet) |
-| Survoler un nœud, tirer depuis un point bleu… | créer un lien, fixé à ce point |
-| … et relâcher sur un point bleu d'un autre nœud | extrémité fixe (le point s'aimante à l'approche) |
-| … et relâcher au milieu d'un nœud | extrémité flottante (suit le côté le plus proche) |
-| … et relâcher dans le vide | crée un nouveau nœud de même apparence, déjà relié |
-| Tirer un lien courbe ou droit | le courber (ajoute un point de passage) |
-| Tirer un point plein / un point creux | déplacer / ajouter un point de passage |
-| Tirer la poignée d'un segment orthogonal | décaler ce segment parallèlement à lui-même |
-| Tirer le libellé d'un lien | le déplacer le long du lien |
-| Double-clic sur un point | le supprimer |
-| Double-clic sur la poignée d'un segment orthogonal | supprimer ce décrochement (ses deux coins) |
-| Double-clic sur un lien ou un nœud | modifier son libellé |
-| Tirer une extrémité d'un lien sélectionné | la reconnecter (point fixe ou flottante) |
-| Glisser dans le vide (Maj pour ajouter) | sélection rectangulaire |
-| Molette | zoom |
-| Espace + glisser, ou clic droit + glisser | déplacer la vue |
-| Ctrl+Z / Ctrl+Y, Ctrl+C / Ctrl+V, Ctrl+D, Suppr, flèches, Ctrl+S | raccourcis habituels |
+| + Host, + Group, + Item, + Trigger | add a Zabbix object, chosen in the side panel (for an item or a trigger: the host first, then the object) |
+| Hover over a node, drag from a blue point… | create a link attached to that point |
+| … and release on a blue point of another node | fixed end (the point snaps when you get close) |
+| … and release in the middle of a node | floating end (follows the nearest side) |
+| … and release in empty space | creates a new node with the same appearance, already linked |
+| Drag a curved or straight link | bend it (adds a waypoint) |
+| Drag a solid point / a hollow point | move / add a waypoint |
+| Drag the handle of an orthogonal segment | shift that segment parallel to itself |
+| Drag the label of a link | move it along the link |
+| Double-click a point | remove it |
+| Double-click the handle of an orthogonal segment | remove that jog (its two corners) |
+| Double-click a link or a node | edit its label |
+| Drag an end of a selected link | reconnect it (fixed point or floating) |
+| Drag in empty space (Shift to add) | rectangle selection |
+| Mouse wheel | zoom |
+| Space + drag, or right-click + drag | move the view |
+| Ctrl+Z / Ctrl+Y, Ctrl+C / Ctrl+V, Ctrl+D, Del, arrow keys, Ctrl+S | the usual shortcuts |
 
-## Widget de tableau de bord
+## Dashboard widget
 
-1. Ouvrir un tableau de bord, cliquer sur **Modifier le tableau de bord**, puis **Ajouter**.
-2. Choisir le type **Carte+**, sélectionner la carte, puis valider et enregistrer le tableau de bord.
+1. Open a dashboard, click **Edit dashboard**, then **Add**.
+2. Choose the **Map+** type, select the map, then apply and save the dashboard.
 
 ![widget](docs/apercu-widget.png)
 
-- Si le nom du widget est laissé vide, c'est le nom de la carte qui s'affiche.
-- Le statut est rafraîchi selon l'intervalle du widget (30 s par défaut). Le zoom et le popup ouvert sont conservés, et les modifications de la carte sont prises en compte automatiquement.
-- Le widget est en lecture seule. Un clic sur un hôte, un groupe, un item ou un déclencheur affiche ses problèmes. Les boutons de zoom apparaissent au survol, et le bouton ↗ ouvre la carte en grand.
-- **Ctrl + molette** zoome. La molette seule fait défiler le tableau de bord, comme d'habitude.
-- La carte se recadre quand on redimensionne le widget.
+- If the widget name is left empty, the map name is shown.
+- The status is refreshed according to the widget's refresh interval (30 s by default). The zoom level and any open popup are kept, and changes to the map are picked up automatically.
+- The widget is read-only. Clicking a host, group, item or trigger shows its problems. Zoom buttons appear on hover, and the ↗ button opens the full map.
+- **Ctrl + mouse wheel** zooms. The mouse wheel alone scrolls the dashboard, as usual.
+- The map is refitted when the widget is resized.
 
-## Environnement de test
+## Languages
 
-[test/docker-compose.yml](test/docker-compose.yml) lance un Zabbix 7.2 complet (PostgreSQL) avec le module monté en direct :
+The module's interface (menu, pages, editor, widget, error messages) follows the Zabbix language. This is the server language (**Administration › General › GUI › Default language**) as long as the user keeps "System default" in their profile, otherwise the language they chose. French is included, and any other language is displayed in English.
+
+In French, the menu is called **Surveillance › Cartes+** and the widget **Carte+**.
+
+To add a language (for example `de`, from the first two letters of the Zabbix locale):
+
+1. copy [bettermaps/assets/js/lang.fr.js](bettermaps/assets/js/lang.fr.js) to `lang.de.js`, translate the values and replace `fr` with `de` on the `window.BetterMapsLang.fr` line;
+2. add `lang.de.js` to `assets` › `js` in [bettermaps/manifest.json](bettermaps/manifest.json), before `bettermap.js`;
+3. copy [bettermaps/lang/fr.php](bettermaps/lang/fr.php) to `lang/de.php` and translate it.
+
+Any entry missing from a catalogue is displayed in English.
+
+## Test environment
+
+[test/docker-compose.yml](test/docker-compose.yml) starts a complete Zabbix 7.2 (PostgreSQL) with the module mounted live:
 
 ```bash
 cd test && docker compose up -d     # http://localhost:8099  (Admin / zabbix)
 ```
 
-## Structure
+## Layout
 
 ```
 bettermaps/
-├── manifest.json              module de type "widget" : pages Cartes+ + widget Carte+
-├── Widget.php                 nom du widget, ajout de l'entrée de menu
-├── actions/                   contrôleurs : liste, vue, création, sauvegarde, suppression,
-│                              recherche d'hôtes / groupes / items / déclencheurs, statut, contenu du widget (WidgetView.php)
-├── includes/                  formulaire du widget (choix de la carte, boutons de zoom)
-├── lib/                       stockage SQL, statut des objets Zabbix, droits, assets, base des contrôleurs JSON
-├── views/                     pages liste et carte, vue et formulaire du widget
-├── assets/js/bettermap.js     l'éditeur SVG (sans dépendance)
-├── assets/js/class.widget.js  classe JS du widget
+├── manifest.json              "widget" type module: Maps+ pages + Map+ widget
+├── Widget.php                 widget name, adds the menu entry
+├── actions/                   controllers: list, view, create, save, delete,
+│                              host / group / item / trigger search, status, widget content (WidgetView.php)
+├── includes/                  widget form (map choice, zoom buttons)
+├── lib/                       SQL storage, status of Zabbix objects, permissions, assets, translations,
+│                              base class of the JSON controllers
+├── lang/                      translations of the server-side messages (fr.php)
+├── views/                     list and map pages, widget view and form
+├── assets/js/bettermap.js     the SVG editor (no dependencies)
+├── assets/js/lang.fr.js       French translation of the editor and the widget
+├── assets/js/class.widget.js  JS class of the widget
 ├── assets/css/bettermap.css
-└── sql/create_table.sql       création manuelle de la table (secours)
+└── sql/create_table.sql       manual table creation (fallback)
 ```
 
-Zabbix ne charge le JS et le CSS d'un module de type widget que sur les tableaux de bord. Les pages Cartes+ les incluent donc elles-mêmes (voir `lib/Assets.php`). Les autres pages de Zabbix ne chargent pas l'éditeur.
+Zabbix only loads the JS and CSS of a "widget" type module on dashboards. The Maps+ pages therefore include them themselves (see `lib/Assets.php`). Other Zabbix pages do not load the editor.
 
-## Licence
+## License
 
 Copyright (C) 2026 Julien Penassou
 
-Better Maps est un logiciel libre, distribué sous la licence **GNU Affero General Public License version 3** (AGPL-3.0), la même que Zabbix. Le texte complet se trouve dans le fichier [LICENSE](LICENSE).
+Better Maps is free software, distributed under the **GNU Affero General Public License version 3** (AGPL-3.0), the same license as Zabbix. The full text is in the [LICENSE](LICENSE) file.
 
-Vous pouvez utiliser, étudier, modifier et redistribuer ce module. Toute version modifiée, qu'elle soit redistribuée ou mise à disposition sur un serveur, doit être publiée sous la même licence, avec son code source.
+You may use, study, modify and redistribute this module. Any modified version, whether redistributed or made available on a server, must be published under the same license, with its source code.
 
-Ce module est fourni sans aucune garantie.
+This module comes with no warranty.
