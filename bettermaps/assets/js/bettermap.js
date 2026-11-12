@@ -39,13 +39,10 @@
 		group: {name: 'Groupe', svg: '<rect x="17" y="5" width="14" height="11" rx="2"/><rect x="4" y="32" width="14" height="11" rx="2"/><rect x="30" y="32" width="14" height="11" rx="2"/><path d="M24 16v8M11 32v-8h26v8"/>'},
 		generic: {name: 'Générique', svg: '<rect x="8" y="8" width="32" height="32" rx="6"/><circle cx="24" cy="24" r="6"/>'},
 		antenna: {name: 'Antenne radio', svg: '<path d="M24 20v22M18 42h12"/><circle cx="24" cy="16" r="3"/><path d="M17 9a10 10 0 0 0 0 14M31 9a10 10 0 0 1 0 14"/><path d="M12 5a17 17 0 0 0 0 22M36 5a17 17 0 0 1 0 22"/>'},
-        printer: {name: 'Imprimante', svg: '<rect x="14" y="7" width="20" height="11" rx="2"/><path d="M7 18h34a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H34M14 32H7a2 2 0 0 1-2-2V20a2 2 0 0 1 2-2"/><rect x="14" y="27" width="20" height="14" rx="2"/>'},
-        phone: {name: 'Téléphone IP', svg: '<rect x="6" y="8" width="36" height="32" rx="4"/><rect x="6" y="8" width="10" height="32" rx="2"/><rect x="20" y="12" width="18" height="14" rx="1.5"/><circle cx="24" cy="32" r="1.5"/><circle cx="29" cy="32" r="1.5"/><circle cx="34" cy="32" r="1.5"/>'},
-        ap: {name: 'Borne Wi-Fi', svg: '<rect x="2" y="2" width="44" height="44" rx="6" ry="6"/><path d="M9 19a21 21 0 0 1 30 0M14.5 25a13 13 0 0 1 19 0M20 31a5.5 5.5 0 0 1 8 0" stroke-linecap="round"/><circle cx="24" cy="37" r="2.2"/>'}
-        };
-
-
-
+		printer: {name: 'Imprimante', svg: '<rect x="14" y="7" width="20" height="11" rx="2"/><path d="M7 18h34a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H34M14 32H7a2 2 0 0 1-2-2V20a2 2 0 0 1 2-2"/><rect x="14" y="27" width="20" height="14" rx="2"/>'},
+		phone: {name: 'Téléphone IP', svg: '<rect x="6" y="8" width="36" height="32" rx="4"/><rect x="6" y="8" width="10" height="32" rx="2"/><rect x="20" y="12" width="18" height="14" rx="1.5"/><circle cx="24" cy="32" r="1.5"/><circle cx="29" cy="32" r="1.5"/><circle cx="34" cy="32" r="1.5"/>'},
+		ap: {name: 'Borne Wi-Fi', svg: '<rect x="2" y="2" width="44" height="44" rx="6" ry="6"/><path d="M9 19a21 21 0 0 1 30 0M14.5 25a13 13 0 0 1 19 0M20 31a5.5 5.5 0 0 1 8 0" stroke-linecap="round"/><circle cx="24" cy="37" r="2.2"/>'}
+	};
 
 	const MAP_DEFAULTS = {
 		grid: true,
