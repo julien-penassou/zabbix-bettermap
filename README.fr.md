@@ -1,5 +1,7 @@
 # Better Maps : cartes réseau façon draw.io pour Zabbix 7.2
 
+🌐 [English](README.md) · **Français**
+
 Ce module frontend ajoute **Surveillance › Cartes+**, un éditeur de cartes indépendant des cartes natives de Zabbix :
 
 - liens **courbes**, droits ou orthogonaux, qu'on plie en les attrapant à la souris ;
@@ -17,7 +19,8 @@ Ce module frontend ajoute **Surveillance › Cartes+**, un éditeur de cartes in
 - annuler/rétablir, copier/coller (y compris entre deux cartes), alignement et répartition, grille magnétique ;
 - mode visualisation : rafraîchissement automatique, popup au clic sur un nœud ou un lien (état, problèmes, liens vers les problèmes, graphiques et dernières données), plein écran ;
 - export et import JSON ;
-- compatible avec les thèmes clairs et sombres de Zabbix.
+- compatible avec les thèmes clairs et sombres de Zabbix ;
+- interface en anglais et en français, selon la langue de Zabbix (voir [Langues](#langues)).
 
 Le même module fournit aussi le widget **Carte+**, qui affiche ces cartes dans un tableau de bord.
 
@@ -82,6 +85,20 @@ Au premier affichage, le module crée une table `bettermaps_map` dans la base Za
 - **Ctrl + molette** zoome. La molette seule fait défiler le tableau de bord, comme d'habitude.
 - La carte se recadre quand on redimensionne le widget.
 
+## Langues
+
+L'interface du module (menu, pages, éditeur, widget, messages d'erreur) suit la langue de Zabbix. C'est la langue du serveur (**Administration › Général › GUI › Langage par défaut**) tant que l'utilisateur garde « Valeur système par défaut » dans son profil, sinon celle qu'il a choisie. Le français est fourni, et toute autre langue s'affiche en anglais.
+
+En anglais, le menu s'appelle **Monitoring › Maps+** et le widget **Map+**.
+
+Pour ajouter une langue (`de` par exemple, d'après les deux premières lettres de la locale Zabbix) :
+
+1. copier [bettermaps/assets/js/lang.fr.js](bettermaps/assets/js/lang.fr.js) en `lang.de.js`, traduire les valeurs et remplacer `fr` par `de` à la ligne `window.BetterMapsLang.fr` ;
+2. ajouter `lang.de.js` dans `assets` › `js` de [bettermaps/manifest.json](bettermaps/manifest.json), avant `bettermap.js` ;
+3. copier [bettermaps/lang/fr.php](bettermaps/lang/fr.php) en `lang/de.php` et le traduire.
+
+Une entrée absente d'un catalogue s'affiche en anglais.
+
 ## Environnement de test
 
 [test/docker-compose.yml](test/docker-compose.yml) lance un Zabbix 7.2 complet (PostgreSQL) avec le module monté en direct :
@@ -99,9 +116,12 @@ bettermaps/
 ├── actions/                   contrôleurs : liste, vue, création, sauvegarde, suppression,
 │                              recherche d'hôtes / groupes / items / déclencheurs, statut, contenu du widget (WidgetView.php)
 ├── includes/                  formulaire du widget (choix de la carte, boutons de zoom)
-├── lib/                       stockage SQL, statut des objets Zabbix, droits, assets, base des contrôleurs JSON
+├── lib/                       stockage SQL, statut des objets Zabbix, droits, assets, traductions,
+│                              base des contrôleurs JSON
+├── lang/                      traductions des messages côté serveur (fr.php)
 ├── views/                     pages liste et carte, vue et formulaire du widget
 ├── assets/js/bettermap.js     l'éditeur SVG (sans dépendance)
+├── assets/js/lang.fr.js       traduction française de l'éditeur et du widget
 ├── assets/js/class.widget.js  classe JS du widget
 ├── assets/css/bettermap.css
 └── sql/create_table.sql       création manuelle de la table (secours)
