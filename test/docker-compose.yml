@@ -1,5 +1,10 @@
-# Environnement de test local : Zabbix 7.2 + PostgreSQL, module monté en direct.
+# Environnement de test local : Zabbix + PostgreSQL, module monté en direct.
 # Lancement (WSL) : docker compose up -d   puis http://localhost:8099  (Admin / zabbix)
+#
+# Version de Zabbix : 7.2 par défaut, choisie avec la variable ZABBIX_VERSION (7.2, 7.4 ou 8.0) :
+#   ZABBIX_VERSION=8.0 docker compose up -d
+# Chaque version a sa propre base (volume test_pgdata_<version>) : changer de version
+# ne migre pas la base d'une autre. Une seule version tourne à la fois (port 8099).
 services:
   postgres:
     image: postgres:16-alpine
@@ -11,7 +16,7 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   zabbix-server:
-    image: zabbix/zabbix-server-pgsql:alpine-7.2-latest
+    image: zabbix/zabbix-server-pgsql:alpine-${ZABBIX_VERSION:-7.2}-latest
     environment:
       DB_SERVER_HOST: postgres
       POSTGRES_USER: zabbix
@@ -20,7 +25,7 @@ services:
     depends_on: [postgres]
 
   zabbix-web:
-    image: zabbix/zabbix-web-nginx-pgsql:alpine-7.2-latest
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-${ZABBIX_VERSION:-7.2}-latest
     environment:
       DB_SERVER_HOST: postgres
       POSTGRES_USER: zabbix
@@ -36,3 +41,4 @@ services:
 
 volumes:
   pgdata:
+    name: test_pgdata_${ZABBIX_VERSION:-7.2}

@@ -105,11 +105,19 @@ Any entry missing from a catalogue is displayed in English.
 
 ## Test environment
 
-[test/docker-compose.yml](test/docker-compose.yml) starts a complete Zabbix 7.2 (PostgreSQL) with the module mounted live:
+[test/docker-compose.yml](test/docker-compose.yml) starts a complete Zabbix (PostgreSQL) with the module mounted live, version 7.2 by default:
 
 ```bash
 cd test && docker compose up -d     # http://localhost:8099  (Admin / zabbix)
 ```
+
+To test another version, choose it with the `ZABBIX_VERSION` variable (`7.2`, `7.4` or `8.0`):
+
+```bash
+cd test && ZABBIX_VERSION=8.0 docker compose up -d
+```
+
+Each version keeps its own database (volume `test_pgdata_<version>`): switching versions does not migrate the previous one's database. Only one version runs at a time, on port 8099.
 
 ## Layout
 

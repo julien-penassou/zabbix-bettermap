@@ -105,11 +105,19 @@ Une entrée absente d'un catalogue s'affiche en anglais.
 
 ## Environnement de test
 
-[test/docker-compose.yml](test/docker-compose.yml) lance un Zabbix 7.2 complet (PostgreSQL) avec le module monté en direct :
+[test/docker-compose.yml](test/docker-compose.yml) lance un Zabbix complet (PostgreSQL) avec le module monté en direct, en version 7.2 par défaut :
 
 ```bash
 cd test && docker compose up -d     # http://localhost:8099  (Admin / zabbix)
 ```
+
+Pour tester une autre version, la choisir avec la variable `ZABBIX_VERSION` (`7.2`, `7.4` ou `8.0`) :
+
+```bash
+cd test && ZABBIX_VERSION=8.0 docker compose up -d
+```
+
+Chaque version garde sa propre base de données (volume `test_pgdata_<version>`) : passer d'une version à l'autre ne migre pas la base de la précédente. Une seule version tourne à la fois, sur le port 8099.
 
 ## Structure
 
