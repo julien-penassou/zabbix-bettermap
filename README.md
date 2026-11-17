@@ -1,4 +1,4 @@
-# Better Maps: draw.io-style network maps for Zabbix 7.2
+# Better Maps: draw.io-style network maps for Zabbix 7.2, 7.4 and 8.0
 
 🌐 **English** · [Français](README.fr.md)
 
@@ -25,6 +25,10 @@ This frontend module adds **Monitoring › Maps+**, a map editor that is indepen
 The same module also provides the **Map+** widget, which shows these maps on a dashboard.
 
 📖 **[User guide](docs/user-guide.md)**: viewing, creating and editing maps, step by step with screenshots.
+
+## Compatibility
+
+The module was developed on **Zabbix 7.2** and also works with **Zabbix 7.4** and **Zabbix 8.0**.
 
 ## Installation
 

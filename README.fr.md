@@ -1,4 +1,4 @@
-# Better Maps : cartes réseau façon draw.io pour Zabbix 7.2
+# Better Maps : cartes réseau façon draw.io pour Zabbix 7.2, 7.4 et 8.0
 
 🌐 [English](README.md) · **Français**
 
@@ -25,6 +25,10 @@ Ce module frontend ajoute **Surveillance › Cartes+**, un éditeur de cartes in
 Le même module fournit aussi le widget **Carte+**, qui affiche ces cartes dans un tableau de bord.
 
 📖 **[Guide utilisateur](docs/guide-utilisateur.md)** : consulter, créer et modifier les cartes, pas à pas et avec captures d'écran.
+
+## Compatibilité
+
+Le module a été développé sur **Zabbix 7.2** et fonctionne également avec **Zabbix 7.4** et **Zabbix 8.0**.
 
 ## Installation
 
