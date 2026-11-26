@@ -162,7 +162,28 @@
 	}
 
 	function emptyStatus() {
-		return {hosts: {}, groups: {}, items: {}, triggers: {}};
+		return {hosts: {}, groups: {}, items: {}, triggers: {}, macros: {}, labels: {}};
+	}
+
+	// Macros des libellés. HOST.* et INVENTORY.* sont demandées au serveur (même motif que HOST_MACRO dans
+	// Status.php) ; ITEM.* et TRIGGER.* viennent du statut de l'objet.
+	const LABEL_MACRO = new RegExp('\\{(HOST\\.(?:ID|HOST|NAME|DESCRIPTION|IP|DNS|CONN|PORT)|INVENTORY\\.[A-Z.]+'
+		+ '|ITEM\\.(?:ID|NAME|KEY|LASTVALUE|VALUE)|TRIGGER\\.(?:ID|NAME|SEVERITY))\\}', 'g');
+	// Macro sans valeur : même texte que Zabbix (« *INCONNU* » en français).
+	const unknownMacro = () => t('*UNKNOWN*');
+
+	function isHostMacro(name) {
+		return /^(HOST|INVENTORY)\./.test(name);
+	}
+
+	// Macros proposées selon le type de nœud (infobulle du champ Libellé).
+	function macroHint(type) {
+		const own = {host: [], item: ['{ITEM.NAME}', '{ITEM.KEY}', '{ITEM.LASTVALUE}'],
+			trigger: ['{TRIGGER.NAME}', '{TRIGGER.SEVERITY}']}[type];
+
+		return own ? t('Macros: {list}', {list: ['{HOST.NAME}', '{HOST.HOST}', '{HOST.IP}', '{HOST.DNS}', '{HOST.CONN}',
+			'{HOST.PORT}', '{HOST.DESCRIPTION}', '{INVENTORY.LOCATION}', '{INVENTORY.MODEL}', '{INVENTORY.*}']
+			.concat(own).join(' ')}) : '';
 	}
 
 	// fromPort / toPort : point de connexion fixe {x, y} relatif au nœud (0..1), ou null pour une extrémité
@@ -742,6 +763,10 @@
 			// le rafraîchissement est piloté par le widget.
 			this.embedded = !!cfg.embedded;
 			this.listeners = [];
+			// Macros d'hôte et libellés de liens couverts par le dernier statut reçu.
+			this.macroNames = new Set();
+			this.labelTexts = new Set();
+
 			// Icônes personnalisées : liste chargée à la demande (éditeur), identifiants dont l'image n'a pas pu être lue.
 			this.customIcons = null;
 			this.brokenIcons = new Set();
@@ -1021,7 +1046,7 @@
 			const kind = OBJECT_TYPES[n.type];
 
 			if (n.label !== '' || !kind) {
-				return n.label;
+				return this.expandMacros(n);
 			}
 
 			const st = this.objStatus(n);
@@ -1029,6 +1054,101 @@
 				trigger: t('(choose a trigger)')}[n.type];
 
 			return st ? st.name : (n[kind.name] || (this.edit ? empty : ''));
+		}
+
+		// Libellé du nœud, macros remplacées. Une macro qui ne s'applique pas au nœud reste telle quelle.
+		expandMacros(n) {
+			const kind = OBJECT_TYPES[n.type];
+
+			if (!kind || n.type === 'group' || !n[kind.field] || !n.label.includes('{')) {
+				return n.label;
+			}
+
+			const st = this.objStatus(n);
+
+			return n.label.replace(LABEL_MACRO, (macro, name) => {
+				const [scope, prop] = name.split('.');
+
+				if (!isHostMacro(name) && scope.toLowerCase() !== n.type) {
+					return macro;
+				}
+
+				if (!this.statusLoaded) {
+					return '…';
+				}
+
+				if (!st) {
+					return unknownMacro();
+				}
+
+				if (isHostMacro(name)) {
+					if (!this.macroNames.has(name)) {
+						this.requestMacros();
+
+						return '…';
+					}
+
+					const hostid = n.type === 'host' ? n.hostid : st.hostid;
+
+					return (st.macros || {})[name] ?? (this.status.macros[hostid] || {})[name] ?? unknownMacro();
+				}
+
+				const value = {
+					ID: n[kind.field],
+					NAME: st.name,
+					KEY: st.key,
+					LASTVALUE: st.value,
+					VALUE: st.value,
+					SEVERITY: n.type === 'trigger' ? sevName(st.severity) : null
+				}[prop];
+
+				return value ?? unknownMacro();
+			});
+		}
+
+		// Macros d'hôte utilisées dans les libellés de la carte.
+		usedMacros() {
+			const names = new Set();
+
+			for (const n of this.doc.nodes) {
+				const kind = OBJECT_TYPES[n.type];
+
+				if (kind && n.type !== 'group' && n[kind.field]) {
+					for (const [, name] of n.label.matchAll(LABEL_MACRO)) {
+						isHostMacro(name) && names.add(name);
+					}
+				}
+			}
+
+			return [...names];
+		}
+
+		// Libellés de liens contenant des macros d'expression ({?last(/hôte/clé)}), résolus par le serveur.
+		usedLinkLabels() {
+			return [...new Set(this.doc.links.map(l => l.label).filter(label => label.includes('{?')))];
+		}
+
+		// Libellé affiché d'un lien : valeurs des macros d'expression, « … » en attendant la réponse du serveur.
+		linkLabel(l) {
+			if (!l.label.includes('{?')) {
+				return l.label;
+			}
+
+			if (this.statusLoaded && this.labelTexts.has(l.label)) {
+				return this.status.labels[l.label] ?? l.label;
+			}
+
+			if (this.statusLoaded) {
+				this.requestMacros();
+			}
+
+			return l.label.replace(/\{\?[^}]*\}/g, '…');
+		}
+
+		// Macro ajoutée à un libellé depuis le dernier statut (saisie, collage, annulation) : valeurs à demander.
+		requestMacros() {
+			clearTimeout(this.macroTimer);
+			this.macroTimer = setTimeout(() => this.destroyed || this.refreshStatus(), 400);
 		}
 
 		// Statut renvoyé par le serveur pour l'objet Zabbix du nœud, ou undefined.
@@ -1108,8 +1228,9 @@
 			}
 
 			const ids = this.objectIds();
+			const sent = {macros: this.usedMacros(), labels: this.usedLinkLabels()};
 
-			if (!Object.values(ids).some(list => list.length)) {
+			if (!Object.values(ids).some(list => list.length) && !sent.labels.length) {
 				this.status = emptyStatus();
 				this.statusLoaded = true;
 				this.render();
@@ -1117,18 +1238,19 @@
 				return;
 			}
 
-			post('bettermap.status', ids)
+			post('bettermap.status', Object.assign({}, sent, ids))
 				.then(res => {
 					if (res.error) {
 						throw new Error(res.error);
 					}
 
-					this.setStatus(res);
+					this.setStatus(res, sent);
 				})
 				.catch(err => this.notify(err.message, true));
 		}
 
-		setStatus(status) {
+		// sent : macros d'hôte et libellés de liens demandés au serveur.
+		setStatus(status, sent = {macros: this.usedMacros(), labels: this.usedLinkLabels()}) {
 			if (this.destroyed) {
 				return;
 			}
@@ -1142,6 +1264,8 @@
 			}
 
 			this.statusLoaded = true;
+			this.macroNames = new Set(sent.macros);
+			this.labelTexts = new Set(sent.labels);
 			this.lastUpdate = new Date();
 			this.render();
 
@@ -1827,12 +1951,14 @@
 					this.arrowHead(g, geom.startTip, {x: -geom.startDir.x, y: -geom.startDir.y}, geom.arrowSize, color);
 				}
 
-				if (l.label) {
+				const text = this.linkLabel(l);
+
+				if (text) {
 					const len = path.getTotalLength();
 					const mid = len ? path.getPointAtLength(len * l.labelPos) : geom.startTip;
 					const lg = svgEl('g', {class: 'bm-link-label-g', 'data-role': 'label', 'data-id': l.id}, g);
 					const bg = svgEl('rect', {class: 'bm-link-label-bg', rx: 3}, lg);
-					const t = drawText(lg, l.label, mid.x, mid.y, {size: l.fontSize, valign: 'middle', cls: 'bm-label bm-link-label'});
+					const t = drawText(lg, text, mid.x, mid.y, {size: l.fontSize, valign: 'middle', cls: 'bm-label bm-link-label'});
 					const bb = t.getBBox();
 
 					bg.setAttribute('x', bb.x - 4);
@@ -1844,7 +1970,7 @@
 				const title = svgEl('title', {}, g);
 				const a = this.node(l.from), b = this.node(l.to);
 
-				title.textContent = this.nodeLabel(a) + ' ↔ ' + this.nodeLabel(b) + (l.label ? '\n' + l.label : '')
+				title.textContent = this.nodeLabel(a) + ' ↔ ' + this.nodeLabel(b) + (l.label ? '\n' + this.linkLabel(l) : '')
 					+ (l.status === 'triggers' && l.triggers.length > 1
 						? '\n' + (l.triggerLogic === 'and' ? t('All triggers (AND):') : t('At least one trigger (OR):')) : '')
 					+ (l.status === 'triggers' ? l.triggers : []).map(tr => '\n• ' + pair(this.triggerText(tr), this.triggerStateText(tr.triggerid))).join('');
@@ -3162,7 +3288,7 @@
 			const byTriggers = l.status === 'triggers';
 
 			p.textContent = '';
-			p.append(htmlEl('div', {class: 'bm-popup-title', text: l.label ? l.label.replace(/\n/g, ' ') : ends}));
+			p.append(htmlEl('div', {class: 'bm-popup-title', text: l.label ? this.linkLabel(l).replace(/\n/g, ' ') : ends}));
 
 			if (l.label) {
 				p.append(htmlEl('div', {class: 'bm-popup-sub', text: ends}));
@@ -3399,7 +3525,7 @@
 		textField(obj, key, opts = {}) {
 			const el = htmlEl(opts.multiline ? 'textarea' : 'input', {
 				type: opts.multiline ? null : 'text', value: obj[key], placeholder: opts.placeholder || '', rows: opts.multiline ? 2 : null,
-				'data-focus': opts.focus ? '1' : null
+				'data-focus': opts.focus ? '1' : null, title: opts.title || null
 			});
 
 			if (opts.multiline) {
@@ -3569,7 +3695,7 @@
 									input.value = r.name;
 									list.hidden = true;
 									input.blur();
-									opts.after && opts.after();
+									opts.after && opts.after(r);
 
 									if (!opts.draft) {
 										this.render();
@@ -3829,7 +3955,7 @@
 			}
 
 			this.row(s1, t('Label'), this.textField(n, 'label', {
-				multiline: true, focus: true,
+				multiline: true, focus: true, title: macroHint(n.type),
 				placeholder: {host: t('Host name by default'), group: t('Group name by default'),
 					item: t('Item name by default'), trigger: t('Trigger name by default')}[n.type] || ''
 			}));
@@ -3994,6 +4120,58 @@
 			}));
 		}
 
+		// Insertion dans le libellé du lien de la dernière valeur d'un item, choisi en deux temps (hôte, item).
+		panelLinkValue(parent, l, textarea) {
+			if (!this.valDraft || this.valDraft.link !== l.id) {
+				this.valDraft = {link: l.id, hostid: '', hostname: '', host: '', itemid: '', itemname: ''};
+			}
+
+			const draft = this.valDraft;
+			// Curseur du libellé quand il a perdu le focus ; sans saisie, la valeur s'ajoute à la fin.
+			let range = null;
+
+			textarea.addEventListener('blur', () => range = [textarea.selectionStart, textarea.selectionEnd]);
+
+			parent.append(htmlEl('div', {class: 'bm-row-label', text: t('Insert an item value')}));
+			this.row(parent, t('Host'), this.picker(draft, 'host', 'hostid', 'hostname', {
+				draft: true,
+				after: r => {
+					draft.host = r.host || '';
+					draft.itemid = '';
+					draft.itemname = '';
+					this.renderPanel();
+
+					const input = this.panel.querySelector('.bm-picker-item input');
+
+					input && input.focus();
+				}
+			}));
+			this.row(parent, t('Item'), this.picker(draft, 'item', 'itemid', 'itemname', {
+				draft: true,
+				params: {hostid: draft.hostid},
+				disabled: !draft.hostid || !draft.host,
+				after: r => {
+					const macro = '{?last(/' + draft.host + '/' + r.detail + ')}';
+					const [start, end] = range || [l.label.length, l.label.length];
+
+					this.checkpoint();
+					l.label = l.label.slice(0, start) + macro + l.label.slice(end);
+					draft.itemid = '';
+					draft.itemname = '';
+					this.render();
+					this.renderPanel();
+					this.refreshStatus();
+
+					const ta = this.panel.querySelector('textarea[data-focus]');
+
+					if (ta) {
+						ta.focus();
+						ta.setSelectionRange(start + macro.length, start + macro.length);
+					}
+				}
+			}));
+		}
+
 		panelLink(l) {
 			const a = this.node(l.from), b = this.node(l.to);
 			const s1 = this.section(t('Link'));
@@ -4007,7 +4185,11 @@
 				this.row(s1, t('Rounded corners'), this.checkField(l, 'rounded'));
 			}
 
-			this.row(s1, t('Label'), this.textField(l, 'label', {multiline: true, focus: true, placeholder: t('e.g. 10 Gb/s')}));
+			const label = this.row(s1, t('Label'), this.textField(l, 'label', {multiline: true, focus: true,
+				placeholder: t('e.g. 10 Gb/s'),
+				title: t('Item values: {?last(/host/key)}, average over 5 minutes: {?avg(/host/key,5m)}')}));
+
+			this.panelLinkValue(s1, l, label);
 
 			const ends = this.section(t('Ends'));
 			const endRow = (label, key) => {

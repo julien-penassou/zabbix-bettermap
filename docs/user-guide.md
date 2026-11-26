@@ -212,6 +212,21 @@ For areas and text, the **Text formatting** section lets you choose the font, si
 
 To type text on several lines, press Enter in the **Label** field.
 
+### Using macros in a label
+
+The **Label** of a host, item or trigger can contain Zabbix macros. They are replaced on the map and updated at every refresh. For example, `{HOST.NAME}` on one line and `{HOST.IP}` on the next.
+
+| Element | Macros |
+|---|---|
+| Host, item, trigger | `{HOST.NAME}`, `{HOST.HOST}`, `{HOST.IP}`, `{HOST.DNS}`, `{HOST.CONN}`, `{HOST.PORT}`, `{HOST.DESCRIPTION}`, `{HOST.ID}` |
+| Host, item, trigger (inventory) | `{INVENTORY.LOCATION}`, `{INVENTORY.MODEL}`, `{INVENTORY.SERIALNO.A}`… (all inventory fields) |
+| Item | `{ITEM.NAME}`, `{ITEM.KEY}`, `{ITEM.LASTVALUE}`, `{ITEM.VALUE}`, `{ITEM.ID}` |
+| Trigger | `{TRIGGER.NAME}`, `{TRIGGER.SEVERITY}`, `{TRIGGER.ID}` |
+
+- `*UNKNOWN*` is shown when the macro has no value: host without an interface, inventory disabled, object you have no access to.
+- For a trigger that spans several hosts, the first host is used.
+- Macros are not replaced in the labels of groups, links, areas and texts. User macros (`{$MACRO}`) are not supported.
+
 ### Changing the appearance of an element
 
 Select the element with a click: the right-hand panel shows its settings.
@@ -293,9 +308,23 @@ The **Straighten** button removes all waypoints. **Reverse** changes the directi
 
 ![Link settings](guide/panneau-lien.png)
 
-- **Label**: text shown on the link (bandwidth, connection type…). Double-clicking the link also lets you type it.
+- **Label**: text shown on the link (bandwidth, connection type…). Double-clicking the link also lets you type it. It can show the real value of an item, see below.
+- **Insert an item value**: choose the **Host**, then the **Item** (for example the incoming traffic of an interface). The macro `{?last(/host/key)}` is inserted in the label, at the cursor position.
 - **Ends**: shows whether each end is attached to a fixed point or floating. **Release** makes an end floating.
 - **Color**, **Width**, **Line** (solid, dashed, dotted), **Arrows** (none, at the end, at the start, at both ends), **Text size**.
+
+### Showing the real bandwidth on a link
+
+The label of a link accepts Zabbix expression macros, like the built-in maps. They are replaced by the value of the item, with its units, and updated at every refresh. For example:
+
+```
+↓ {?last(/core-sw/net.if.in[Gi0/1])}
+↑ {?last(/core-sw/net.if.out[Gi0/1])}
+```
+
+- `/core-sw/…` is the **technical name** of the host, followed by the item key. The easiest way is to use **Insert an item value**.
+- Other functions are available: `{?avg(/host/key,5m)}` (5-minute average), `{?max(/host/key,1h)}`, `{?min(/host/key,1h)}`. Add `.fmtnum(1)` to round (the unit is then dropped): `{{?last(/host/key)}.fmtnum(1)}`.
+- `*UNKNOWN*` is shown if the item does not exist or you have no access to it.
 
 ### Choosing what colours the link
 

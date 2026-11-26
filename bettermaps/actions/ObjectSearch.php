@@ -29,14 +29,16 @@ class ObjectSearch extends JsonController {
 
 		switch ($this->getInput('type')) {
 			case 'host':
-				$options = ['output' => ['hostid', 'name'], 'sortfield' => 'name', 'limit' => 30];
+				$options = ['output' => ['hostid', 'host', 'name'], 'sortfield' => 'name', 'limit' => 30];
 
 				if ($search !== '') {
-					$options['search'] = ['name' => $search];
+					$options['search'] = ['name' => $search, 'host' => $search];
+					$options['searchByAny'] = true;
 				}
 
 				foreach (API::Host()->get($options) as $host) {
-					$results[] = ['id' => $host['hostid'], 'name' => $host['name']];
+					// host : nom technique, pour écrire une macro d'expression.
+					$results[] = ['id' => $host['hostid'], 'name' => $host['name'], 'host' => $host['host']];
 				}
 				break;
 

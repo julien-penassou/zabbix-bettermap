@@ -3,6 +3,7 @@
 namespace Modules\BetterMaps\Lib;
 
 use API;
+use CMacrosResolverHelper;
 
 /**
  * Statut temps réel des objets Zabbix d'une carte : hôtes, groupes d'hôtes, items et déclencheurs.
@@ -10,17 +11,32 @@ use API;
  */
 class Status {
 
+	/** Macros d'hôte et d'inventaire acceptées dans les libellés (même motif que LABEL_MACRO dans bettermap.js). */
+	private const HOST_MACRO = '(?:HOST\.(?:ID|HOST|NAME|DESCRIPTION|IP|DNS|CONN|PORT)|INVENTORY\.[A-Z.]+)';
+
+	/** Interface d'un hôte, par ordre de préférence : le même que celui de Zabbix. */
+	private const INTERFACE_PRIORITY = [INTERFACE_TYPE_AGENT, INTERFACE_TYPE_SNMP, INTERFACE_TYPE_JMX,
+		INTERFACE_TYPE_IPMI
+	];
+
 	/**
-	 * @param array $ids  ['hostids' => [...], 'groupids' => [...], 'itemids' => [...], 'triggerids' => [...]]
+	 * @param array $ids  ['hostids' => [...], 'groupids' => [...], 'itemids' => [...], 'triggerids' => [...],
+	 *                    'macros' => noms des macros d'hôte utilisées dans les libellés (HOST.IP…),
+	 *                    'labels' => libellés de liens contenant des macros d'expression ({?last(/hôte/clé)})]
 	 *
 	 * @return array  ['hosts' => {hostid: …}, 'groups' => {groupid: …}, 'items' => {itemid: …},
-	 *                 'triggers' => {triggerid: …}]
+	 *                 'triggers' => {triggerid: …}, 'macros' => {hostid: {macro: valeur}},
+	 *                 'labels' => {libellé: libellé résolu}]
 	 */
 	public static function get(array $ids): array {
 		$hostids = array_values(array_unique($ids['hostids'] ?? []));
 		$groupids = array_values(array_unique($ids['groupids'] ?? []));
 		$itemids = array_values(array_unique($ids['itemids'] ?? []));
 		$triggerids = array_values(array_unique($ids['triggerids'] ?? []));
+
+		$macros = array_values(array_unique($ids['macros'] ?? []));
+		// itemid => interfaceid
+		$item_interfaces = [];
 
 		$hosts = [];
 		$groups = [];
@@ -99,7 +115,7 @@ class Status {
 		if ($itemids) {
 			$db_items = API::Item()->get([
 				'output' => ['itemid', 'hostid', 'name', 'key_', 'value_type', 'units', 'lastvalue', 'lastclock', 'state',
-					'status'
+					'status', 'interfaceid'
 				],
 				'selectHosts' => ['name', 'status'],
 				'selectValueMap' => ['mappings'],
@@ -110,6 +126,7 @@ class Status {
 
 			foreach ($db_items as $itemid => $item) {
 				$host = $item['hosts'][0] ?? ['name' => '', 'status' => HOST_STATUS_MONITORED];
+				$item_interfaces[$itemid] = $item['interfaceid'];
 				$has_value = $item['lastclock'] != 0;
 
 				$items[$itemid] = [
@@ -166,6 +183,10 @@ class Status {
 			self::addProblems(array_keys($problem_hostids), $hosts, $groups, $items, $triggers, $group_members);
 		}
 
+		$host_macros = $macros
+			? self::addMacros($macros, array_keys($hosts), $items, $triggers, $item_interfaces)
+			: [];
+
 		foreach ($groups as &$group) {
 			$group['problem_hosts'] = count($group['problem_hosts']);
 			$group['problems'] = array_values($group['problems']);
@@ -176,7 +197,132 @@ class Status {
 			'hosts' => (object) $hosts,
 			'groups' => (object) $groups,
 			'items' => (object) $items,
-			'triggers' => (object) $triggers
+			'triggers' => (object) $triggers,
+			'macros' => (object) $host_macros,
+			'labels' => (object) self::resolveLabels($ids['labels'] ?? [])
+		];
+	}
+
+	/**
+	 * Valeurs des macros d'hôte demandées, pour les hôtes de la carte et ceux des items et des déclencheurs.
+	 * Les macros d'interface d'un item sont celles de sa propre interface (clé 'macros' de l'item).
+	 *
+	 * @return array  hostid => {macro: valeur} ; une macro sans valeur (pas d'interface, inventaire désactivé,
+	 *                macro inconnue) est absente.
+	 */
+	private static function addMacros(array $macros, array $hostids, array &$items, array $triggers,
+			array $item_interfaces): array {
+		$hostids = array_merge($hostids, array_column($items, 'hostid'), array_column($triggers, 'hostid'));
+		$hostids = array_values(array_unique(array_filter($hostids)));
+
+		if (!$hostids) {
+			return [];
+		}
+
+		// Champs d'inventaire demandés : macro => champ.
+		$inventory = [];
+
+		if (preg_grep('/^INVENTORY\./', $macros)) {
+			foreach (array_column(getHostInventories(), 'db_field') as $field) {
+				$macro = 'INVENTORY.'.strtoupper(strtr($field, ['date_hw_' => 'hw.date.', 'poc_1_' => 'poc.primary.',
+					'poc_2_' => 'poc.secondary.', '_' => '.'
+				]));
+
+				if (in_array($macro, $macros, true)) {
+					$inventory[$macro] = $field;
+				}
+			}
+		}
+
+		$options = [
+			'output' => ['hostid', 'host', 'name', 'description', 'inventory_mode'],
+			'hostids' => $hostids,
+			'preservekeys' => true
+		];
+		$with_interfaces = (bool) array_intersect($macros, ['HOST.IP', 'HOST.DNS', 'HOST.CONN', 'HOST.PORT']);
+
+		if ($with_interfaces) {
+			$options['selectInterfaces'] = ['interfaceid', 'hostid', 'type', 'main', 'useip', 'ip', 'dns', 'port'];
+		}
+
+		if ($inventory) {
+			$options['selectInventory'] = array_values($inventory);
+		}
+
+		$result = [];
+		$interfaces = [];
+
+		foreach (API::Host()->get($options) as $hostid => $host) {
+			$values = [
+				'HOST.ID' => (string) $hostid,
+				'HOST.HOST' => $host['host'],
+				'HOST.NAME' => $host['name'],
+				'HOST.DESCRIPTION' => $host['description']
+			];
+
+			if ($host['inventory_mode'] != HOST_INVENTORY_DISABLED) {
+				foreach ($inventory as $macro => $field) {
+					if (isset($host['inventory'][$field])) {
+						$values[$macro] = $host['inventory'][$field];
+					}
+				}
+			}
+
+			// Macros utilisateur dans les adresses : les valeurs secrètes sont masquées par Zabbix.
+			$host_interfaces = $with_interfaces
+				? array_column(CMacrosResolverHelper::resolveHostInterfaces($host['interfaces']), null, 'interfaceid')
+				: [];
+			$interfaces += $host_interfaces;
+
+			foreach (self::INTERFACE_PRIORITY as $type) {
+				foreach ($host_interfaces as $interface) {
+					if ($interface['type'] == $type && $interface['main'] == INTERFACE_PRIMARY) {
+						$values += self::interfaceMacros($interface);
+						break 2;
+					}
+				}
+			}
+
+			$result[$hostid] = (object) array_intersect_key($values, array_flip($macros));
+		}
+
+		foreach ($item_interfaces as $itemid => $interfaceid) {
+			if (array_key_exists($interfaceid, $interfaces)) {
+				$items[$itemid]['macros'] = self::interfaceMacros($interfaces[$interfaceid]);
+			}
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Libellés de liens : macros d'expression ({?last(/hôte/clé)}, {?avg(/hôte/clé,5m)}…) résolues par Zabbix,
+	 * comme dans ses cartes natives (unités, droits de l'utilisateur, *UNKNOWN* si l'item est inaccessible).
+	 *
+	 * @return array  libellé => libellé résolu
+	 */
+	private static function resolveLabels(array $labels): array {
+		$labels = array_values(array_unique(array_filter($labels,
+			fn($label) => is_string($label) && strpos($label, '{?') !== false
+		)));
+
+		if (!$labels) {
+			return [];
+		}
+
+		$links = CMacrosResolverHelper::resolveMapLinkLabelMacros(array_map(fn($label) => ['label' => $label],
+			array_slice($labels, 0, 500)
+		));
+
+		return array_combine(array_slice($labels, 0, count($links)), array_column($links, 'label'));
+	}
+
+	private static function interfaceMacros(array $interface): array {
+		return [
+			'HOST.IP' => $interface['ip'],
+			'HOST.DNS' => $interface['dns'],
+			'HOST.CONN' => $interface['useip'] == INTERFACE_USE_IP ? $interface['ip'] : $interface['dns'],
+			'HOST.PORT' => $interface['port']
 		];
 	}
 
@@ -251,10 +397,12 @@ class Status {
 	}
 
 	/**
-	 * Identifiants des objets Zabbix utilisés dans une carte.
+	 * Identifiants des objets Zabbix utilisés dans une carte, et macros d'hôte de leurs libellés.
 	 */
 	public static function mapObjects(array $data): array {
-		$ids = ['hostids' => [], 'groupids' => [], 'itemids' => [], 'triggerids' => []];
+		$ids = ['hostids' => [], 'groupids' => [], 'itemids' => [], 'triggerids' => [], 'macros' => [],
+			'labels' => []
+		];
 		$fields = ['host' => ['hostid', 'hostids'], 'group' => ['groupid', 'groupids'], 'item' => ['itemid', 'itemids'],
 			'trigger' => ['triggerid', 'triggerids']];
 
@@ -267,12 +415,26 @@ class Status {
 
 			if (ctype_digit((string) ($node[$field] ?? ''))) {
 				$ids[$key][] = (string) $node[$field];
+
+				if ($node['type'] !== 'group' && is_string($node['label'] ?? null)
+						&& preg_match_all('/\{('.self::HOST_MACRO.')\}/', $node['label'], $matches)) {
+					array_push($ids['macros'], ...$matches[1]);
+				}
 			}
 		}
 
-		// Déclencheurs des liens colorés selon « autre(s) déclencheur(s) ».
 		foreach ($data['links'] ?? [] as $link) {
-			if (!is_array($link) || ($link['status'] ?? '') !== 'triggers' || !is_array($link['triggers'] ?? null)) {
+			if (!is_array($link)) {
+				continue;
+			}
+
+			// Libellés à macros d'expression.
+			if (is_string($link['label'] ?? null) && strpos($link['label'], '{?') !== false) {
+				$ids['labels'][] = $link['label'];
+			}
+
+			// Déclencheurs des liens colorés selon « autre(s) déclencheur(s) ».
+			if (($link['status'] ?? '') !== 'triggers' || !is_array($link['triggers'] ?? null)) {
 				continue;
 			}
 
