@@ -21,10 +21,12 @@ class Status {
 
 	/**
 	 * @param array $ids  ['hostids' => [...], 'groupids' => [...], 'itemids' => [...], 'triggerids' => [...],
-	 *                    'macros' => noms des macros d'hôte utilisées dans les libellés (HOST.IP…)]
+	 *                    'macros' => noms des macros d'hôte utilisées dans les libellés (HOST.IP…),
+	 *                    'labels' => libellés de liens contenant des macros d'expression ({?last(/hôte/clé)})]
 	 *
 	 * @return array  ['hosts' => {hostid: …}, 'groups' => {groupid: …}, 'items' => {itemid: …},
-	 *                 'triggers' => {triggerid: …}, 'macros' => {hostid: {macro: valeur}}]
+	 *                 'triggers' => {triggerid: …}, 'macros' => {hostid: {macro: valeur}},
+	 *                 'labels' => {libellé: libellé résolu}]
 	 */
 	public static function get(array $ids): array {
 		$hostids = array_values(array_unique($ids['hostids'] ?? []));
@@ -196,7 +198,8 @@ class Status {
 			'groups' => (object) $groups,
 			'items' => (object) $items,
 			'triggers' => (object) $triggers,
-			'macros' => (object) $host_macros
+			'macros' => (object) $host_macros,
+			'labels' => (object) self::resolveLabels($ids['labels'] ?? [])
 		];
 	}
 
@@ -292,6 +295,28 @@ class Status {
 		return $result;
 	}
 
+	/**
+	 * Libellés de liens : macros d'expression ({?last(/hôte/clé)}, {?avg(/hôte/clé,5m)}…) résolues par Zabbix,
+	 * comme dans ses cartes natives (unités, droits de l'utilisateur, *UNKNOWN* si l'item est inaccessible).
+	 *
+	 * @return array  libellé => libellé résolu
+	 */
+	private static function resolveLabels(array $labels): array {
+		$labels = array_values(array_unique(array_filter($labels,
+			fn($label) => is_string($label) && strpos($label, '{?') !== false
+		)));
+
+		if (!$labels) {
+			return [];
+		}
+
+		$links = CMacrosResolverHelper::resolveMapLinkLabelMacros(array_map(fn($label) => ['label' => $label],
+			array_slice($labels, 0, 500)
+		));
+
+		return array_combine(array_slice($labels, 0, count($links)), array_column($links, 'label'));
+	}
+
 	private static function interfaceMacros(array $interface): array {
 		return [
 			'HOST.IP' => $interface['ip'],
@@ -375,7 +400,9 @@ class Status {
 	 * Identifiants des objets Zabbix utilisés dans une carte, et macros d'hôte de leurs libellés.
 	 */
 	public static function mapObjects(array $data): array {
-		$ids = ['hostids' => [], 'groupids' => [], 'itemids' => [], 'triggerids' => [], 'macros' => []];
+		$ids = ['hostids' => [], 'groupids' => [], 'itemids' => [], 'triggerids' => [], 'macros' => [],
+			'labels' => []
+		];
 		$fields = ['host' => ['hostid', 'hostids'], 'group' => ['groupid', 'groupids'], 'item' => ['itemid', 'itemids'],
 			'trigger' => ['triggerid', 'triggerids']];
 
@@ -396,9 +423,18 @@ class Status {
 			}
 		}
 
-		// Déclencheurs des liens colorés selon « autre(s) déclencheur(s) ».
 		foreach ($data['links'] ?? [] as $link) {
-			if (!is_array($link) || ($link['status'] ?? '') !== 'triggers' || !is_array($link['triggers'] ?? null)) {
+			if (!is_array($link)) {
+				continue;
+			}
+
+			// Libellés à macros d'expression.
+			if (is_string($link['label'] ?? null) && strpos($link['label'], '{?') !== false) {
+				$ids['labels'][] = $link['label'];
+			}
+
+			// Déclencheurs des liens colorés selon « autre(s) déclencheur(s) ».
+			if (($link['status'] ?? '') !== 'triggers' || !is_array($link['triggers'] ?? null)) {
 				continue;
 			}
 

@@ -12,6 +12,7 @@ This frontend module adds **Monitoring › Maps+**, a map editor that is indepen
 - custom icons (SVG, PNG, JPEG, GIF, WebP, 1 MB max) added and deleted from the editor and shared by all maps; SVG files containing scripts, event handlers, a DTD or external references are rejected;
 - host and group labels at the bottom, top, left or right (per node, or as a default for the whole map), with links routed around them; or no icon at all, with the label written inside the box;
 - Zabbix macros in the labels of hosts, items and triggers: `{HOST.*}`, `{INVENTORY.*}`, `{ITEM.*}`, `{TRIGGER.*}`;
+- real item values in link labels (bandwidth…), with Zabbix expression macros `{?last(/host/key)}` and an item picker to insert them;
 - host groups: combined status of the group's monitored hosts (highest severity, number of problems, hosts in problem);
 - items: latest value shown live (units and value mappings applied), status based on the item's triggers;
 - triggers: OK / PROBLEM state in the severity colours, active problems on click;

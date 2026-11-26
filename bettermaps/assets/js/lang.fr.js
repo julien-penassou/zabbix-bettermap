@@ -163,6 +163,10 @@ window.BetterMapsLang.fr = {
 	'Shape / area': 'Forme / zone',
 	'Type': 'Type',
 	'Label': 'Libellé',
+	'Item values: {?last(/host/key)}, average over 5 minutes: {?avg(/host/key,5m)}':
+		'Valeurs d\'items : {?last(/hôte/clé)}, moyenne sur 5 minutes : {?avg(/hôte/clé,5m)}',
+	'Insert an item value': 'Insérer la valeur d\'un item',
+	'*UNKNOWN*': '*INCONNU*',
 	'Macros: {list}': 'Macros : {list}',
 	'Host name by default': 'Nom de l\'hôte par défaut',
 	'Group name by default': 'Nom du groupe par défaut',

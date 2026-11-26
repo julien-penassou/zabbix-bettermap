@@ -221,7 +221,7 @@ Le **Libellé** d'un hôte, d'un item ou d'un déclencheur peut contenir des mac
 | Item | `{ITEM.NAME}`, `{ITEM.KEY}`, `{ITEM.LASTVALUE}`, `{ITEM.VALUE}`, `{ITEM.ID}` |
 | Déclencheur | `{TRIGGER.NAME}`, `{TRIGGER.SEVERITY}`, `{TRIGGER.ID}` |
 
-- `*UNKNOWN*` s'affiche quand la macro n'a pas de valeur : hôte sans interface, inventaire désactivé, objet auquel vous n'avez pas accès.
+- `*INCONNU*` s'affiche quand la macro n'a pas de valeur : hôte sans interface, inventaire désactivé, objet auquel vous n'avez pas accès.
 - Pour un déclencheur portant sur plusieurs hôtes, c'est le premier hôte qui compte.
 - Les macros ne sont pas remplacées dans les libellés de groupes, de liens, de zones et de textes. Les macros utilisateur (`{$MACRO}`) ne sont pas prises en charge.
 
@@ -306,9 +306,23 @@ Le bouton **Redresser** supprime tous les points de passage. **Inverser** change
 
 ![Réglages d'un lien](guide/panneau-lien.png)
 
-- **Libellé** : texte affiché sur le lien (débit, type de connexion…). Un double-clic sur le lien permet aussi de le saisir.
+- **Libellé** : texte affiché sur le lien (débit, type de connexion…). Un double-clic sur le lien permet aussi de le saisir. Il peut afficher la valeur réelle d'un item, voir ci-dessous.
+- **Insérer la valeur d'un item** : choisissez l'**Hôte**, puis l'**Item** (par exemple le trafic entrant d'une interface). La macro `{?last(/hôte/clé)}` est insérée dans le libellé, à l'emplacement du curseur.
 - **Extrémités** : indique si chaque bout est accroché à un point fixe ou flottant. **Libérer** rend une extrémité flottante.
 - **Couleur**, **Épaisseur**, **Trait** (plein, tirets, pointillés), **Flèches** (aucune, à l'arrivée, au départ, aux deux bouts), **Taille texte**.
+
+### Afficher le débit réel sur un lien
+
+Le libellé d'un lien accepte les macros d'expression de Zabbix, comme les cartes natives. Elles sont remplacées par la valeur de l'item, avec ses unités, et mises à jour à chaque rafraîchissement. Par exemple :
+
+```
+↓ {?last(/sw-coeur/net.if.in[Gi0/1])}
+↑ {?last(/sw-coeur/net.if.out[Gi0/1])}
+```
+
+- `/sw-coeur/…` est le **nom technique** de l'hôte, suivi de la clé de l'item. Le plus simple est d'utiliser **Insérer la valeur d'un item**.
+- D'autres fonctions sont possibles : `{?avg(/hôte/clé,5m)}` (moyenne sur 5 minutes), `{?max(/hôte/clé,1h)}`, `{?min(/hôte/clé,1h)}`. On peut ajouter `.fmtnum(1)` pour arrondir (l'unité disparaît alors) : `{{?last(/hôte/clé)}.fmtnum(1)}`.
+- `*INCONNU*` s'affiche si l'item n'existe pas ou si vous n'y avez pas accès.
 
 ### Choisir ce qui colore le lien
 
