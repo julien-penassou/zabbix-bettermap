@@ -210,6 +210,21 @@ Pour les zones et les textes, le panneau **Mise en forme du texte** permet de ch
 
 Pour saisir un texte sur plusieurs lignes, utilisez la touche Entrée dans le champ **Libellé**.
 
+### Utiliser des macros dans un libellé
+
+Le **Libellé** d'un hôte, d'un item ou d'un déclencheur peut contenir des macros Zabbix. Elles sont remplacées sur la carte et mises à jour à chaque rafraîchissement. Par exemple, `{HOST.NAME}` sur une ligne et `{HOST.IP}` sur la suivante.
+
+| Élément | Macros |
+|---|---|
+| Hôte, item, déclencheur | `{HOST.NAME}`, `{HOST.HOST}`, `{HOST.IP}`, `{HOST.DNS}`, `{HOST.CONN}`, `{HOST.PORT}`, `{HOST.DESCRIPTION}`, `{HOST.ID}` |
+| Hôte, item, déclencheur (inventaire) | `{INVENTORY.LOCATION}`, `{INVENTORY.MODEL}`, `{INVENTORY.SERIALNO.A}`… (tous les champs d'inventaire) |
+| Item | `{ITEM.NAME}`, `{ITEM.KEY}`, `{ITEM.LASTVALUE}`, `{ITEM.VALUE}`, `{ITEM.ID}` |
+| Déclencheur | `{TRIGGER.NAME}`, `{TRIGGER.SEVERITY}`, `{TRIGGER.ID}` |
+
+- `*UNKNOWN*` s'affiche quand la macro n'a pas de valeur : hôte sans interface, inventaire désactivé, objet auquel vous n'avez pas accès.
+- Pour un déclencheur portant sur plusieurs hôtes, c'est le premier hôte qui compte.
+- Les macros ne sont pas remplacées dans les libellés de groupes, de liens, de zones et de textes. Les macros utilisateur (`{$MACRO}`) ne sont pas prises en charge.
+
 ### Modifier l'apparence d'un élément
 
 Sélectionnez l'élément d'un clic : le panneau de droite affiche ses réglages.

@@ -163,6 +163,7 @@ window.BetterMapsLang.fr = {
 	'Shape / area': 'Forme / zone',
 	'Type': 'Type',
 	'Label': 'Libellé',
+	'Macros: {list}': 'Macros : {list}',
 	'Host name by default': 'Nom de l\'hôte par défaut',
 	'Group name by default': 'Nom du groupe par défaut',
 	'Item name by default': 'Nom de l\'item par défaut',

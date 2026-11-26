@@ -162,7 +162,27 @@
 	}
 
 	function emptyStatus() {
-		return {hosts: {}, groups: {}, items: {}, triggers: {}};
+		return {hosts: {}, groups: {}, items: {}, triggers: {}, macros: {}};
+	}
+
+	// Macros des libellés. HOST.* et INVENTORY.* sont demandées au serveur (même motif que HOST_MACRO dans
+	// Status.php) ; ITEM.* et TRIGGER.* viennent du statut de l'objet.
+	const LABEL_MACRO = new RegExp('\\{(HOST\\.(?:ID|HOST|NAME|DESCRIPTION|IP|DNS|CONN|PORT)|INVENTORY\\.[A-Z.]+'
+		+ '|ITEM\\.(?:ID|NAME|KEY|LASTVALUE|VALUE)|TRIGGER\\.(?:ID|NAME|SEVERITY))\\}', 'g');
+	const UNKNOWN_MACRO = '*UNKNOWN*';
+
+	function isHostMacro(name) {
+		return /^(HOST|INVENTORY)\./.test(name);
+	}
+
+	// Macros proposées selon le type de nœud (infobulle du champ Libellé).
+	function macroHint(type) {
+		const own = {host: [], item: ['{ITEM.NAME}', '{ITEM.KEY}', '{ITEM.LASTVALUE}'],
+			trigger: ['{TRIGGER.NAME}', '{TRIGGER.SEVERITY}']}[type];
+
+		return own ? t('Macros: {list}', {list: ['{HOST.NAME}', '{HOST.HOST}', '{HOST.IP}', '{HOST.DNS}', '{HOST.CONN}',
+			'{HOST.PORT}', '{HOST.DESCRIPTION}', '{INVENTORY.LOCATION}', '{INVENTORY.MODEL}', '{INVENTORY.*}']
+			.concat(own).join(' ')}) : '';
 	}
 
 	// fromPort / toPort : point de connexion fixe {x, y} relatif au nœud (0..1), ou null pour une extrémité
@@ -742,6 +762,9 @@
 			// le rafraîchissement est piloté par le widget.
 			this.embedded = !!cfg.embedded;
 			this.listeners = [];
+			// Macros d'hôte couvertes par le dernier statut reçu.
+			this.macroNames = new Set();
+
 			// Icônes personnalisées : liste chargée à la demande (éditeur), identifiants dont l'image n'a pas pu être lue.
 			this.customIcons = null;
 			this.brokenIcons = new Set();
@@ -1021,7 +1044,7 @@
 			const kind = OBJECT_TYPES[n.type];
 
 			if (n.label !== '' || !kind) {
-				return n.label;
+				return this.expandMacros(n);
 			}
 
 			const st = this.objStatus(n);
@@ -1029,6 +1052,79 @@
 				trigger: t('(choose a trigger)')}[n.type];
 
 			return st ? st.name : (n[kind.name] || (this.edit ? empty : ''));
+		}
+
+		// Libellé du nœud, macros remplacées. Une macro qui ne s'applique pas au nœud reste telle quelle.
+		expandMacros(n) {
+			const kind = OBJECT_TYPES[n.type];
+
+			if (!kind || n.type === 'group' || !n[kind.field] || !n.label.includes('{')) {
+				return n.label;
+			}
+
+			const st = this.objStatus(n);
+
+			return n.label.replace(LABEL_MACRO, (macro, name) => {
+				const [scope, prop] = name.split('.');
+
+				if (!isHostMacro(name) && scope.toLowerCase() !== n.type) {
+					return macro;
+				}
+
+				if (!this.statusLoaded) {
+					return '…';
+				}
+
+				if (!st) {
+					return UNKNOWN_MACRO;
+				}
+
+				if (isHostMacro(name)) {
+					if (!this.macroNames.has(name)) {
+						this.requestMacros();
+
+						return '…';
+					}
+
+					const hostid = n.type === 'host' ? n.hostid : st.hostid;
+
+					return (st.macros || {})[name] ?? (this.status.macros[hostid] || {})[name] ?? UNKNOWN_MACRO;
+				}
+
+				const value = {
+					ID: n[kind.field],
+					NAME: st.name,
+					KEY: st.key,
+					LASTVALUE: st.value,
+					VALUE: st.value,
+					SEVERITY: n.type === 'trigger' ? sevName(st.severity) : null
+				}[prop];
+
+				return value ?? UNKNOWN_MACRO;
+			});
+		}
+
+		// Macros d'hôte utilisées dans les libellés de la carte.
+		usedMacros() {
+			const names = new Set();
+
+			for (const n of this.doc.nodes) {
+				const kind = OBJECT_TYPES[n.type];
+
+				if (kind && n.type !== 'group' && n[kind.field]) {
+					for (const [, name] of n.label.matchAll(LABEL_MACRO)) {
+						isHostMacro(name) && names.add(name);
+					}
+				}
+			}
+
+			return [...names];
+		}
+
+		// Macro ajoutée à un libellé depuis le dernier statut (saisie, collage, annulation) : valeurs à demander.
+		requestMacros() {
+			clearTimeout(this.macroTimer);
+			this.macroTimer = setTimeout(() => this.destroyed || this.refreshStatus(), 400);
 		}
 
 		// Statut renvoyé par le serveur pour l'objet Zabbix du nœud, ou undefined.
@@ -1117,18 +1213,20 @@
 				return;
 			}
 
-			post('bettermap.status', ids)
+			const macros = this.usedMacros();
+
+			post('bettermap.status', Object.assign({macros}, ids))
 				.then(res => {
 					if (res.error) {
 						throw new Error(res.error);
 					}
 
-					this.setStatus(res);
+					this.setStatus(res, macros);
 				})
 				.catch(err => this.notify(err.message, true));
 		}
 
-		setStatus(status) {
+		setStatus(status, macros = this.usedMacros()) {
 			if (this.destroyed) {
 				return;
 			}
@@ -1142,6 +1240,7 @@
 			}
 
 			this.statusLoaded = true;
+			this.macroNames = new Set(macros);
 			this.lastUpdate = new Date();
 			this.render();
 
@@ -3399,7 +3498,7 @@
 		textField(obj, key, opts = {}) {
 			const el = htmlEl(opts.multiline ? 'textarea' : 'input', {
 				type: opts.multiline ? null : 'text', value: obj[key], placeholder: opts.placeholder || '', rows: opts.multiline ? 2 : null,
-				'data-focus': opts.focus ? '1' : null
+				'data-focus': opts.focus ? '1' : null, title: opts.title || null
 			});
 
 			if (opts.multiline) {
@@ -3829,7 +3928,7 @@
 			}
 
 			this.row(s1, t('Label'), this.textField(n, 'label', {
-				multiline: true, focus: true,
+				multiline: true, focus: true, title: macroHint(n.type),
 				placeholder: {host: t('Host name by default'), group: t('Group name by default'),
 					item: t('Item name by default'), trigger: t('Trigger name by default')}[n.type] || ''
 			}));

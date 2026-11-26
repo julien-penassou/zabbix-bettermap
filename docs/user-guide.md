@@ -212,6 +212,21 @@ For areas and text, the **Text formatting** section lets you choose the font, si
 
 To type text on several lines, press Enter in the **Label** field.
 
+### Using macros in a label
+
+The **Label** of a host, item or trigger can contain Zabbix macros. They are replaced on the map and updated at every refresh. For example, `{HOST.NAME}` on one line and `{HOST.IP}` on the next.
+
+| Element | Macros |
+|---|---|
+| Host, item, trigger | `{HOST.NAME}`, `{HOST.HOST}`, `{HOST.IP}`, `{HOST.DNS}`, `{HOST.CONN}`, `{HOST.PORT}`, `{HOST.DESCRIPTION}`, `{HOST.ID}` |
+| Host, item, trigger (inventory) | `{INVENTORY.LOCATION}`, `{INVENTORY.MODEL}`, `{INVENTORY.SERIALNO.A}`… (all inventory fields) |
+| Item | `{ITEM.NAME}`, `{ITEM.KEY}`, `{ITEM.LASTVALUE}`, `{ITEM.VALUE}`, `{ITEM.ID}` |
+| Trigger | `{TRIGGER.NAME}`, `{TRIGGER.SEVERITY}`, `{TRIGGER.ID}` |
+
+- `*UNKNOWN*` is shown when the macro has no value: host without an interface, inventory disabled, object you have no access to.
+- For a trigger that spans several hosts, the first host is used.
+- Macros are not replaced in the labels of groups, links, areas and texts. User macros (`{$MACRO}`) are not supported.
+
 ### Changing the appearance of an element
 
 Select the element with a click: the right-hand panel shows its settings.

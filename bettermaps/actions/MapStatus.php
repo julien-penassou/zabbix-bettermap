@@ -16,7 +16,8 @@ class MapStatus extends JsonController {
 			'hostids' => 'array_id',
 			'groupids' => 'array_id',
 			'itemids' => 'array_id',
-			'triggerids' => 'array_id'
+			'triggerids' => 'array_id',
+			'macros' => 'array'
 		]);
 	}
 
@@ -29,7 +30,8 @@ class MapStatus extends JsonController {
 			'hostids' => $this->getInput('hostids', []),
 			'groupids' => $this->getInput('groupids', []),
 			'itemids' => $this->getInput('itemids', []),
-			'triggerids' => $this->getInput('triggerids', [])
+			'triggerids' => $this->getInput('triggerids', []),
+			'macros' => array_filter($this->getInput('macros', []), 'is_string')
 		]));
 	}
 }

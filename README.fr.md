@@ -11,6 +11,7 @@ Ce module frontend ajoute **Surveillance › Cartes+**, un éditeur de cartes in
 - hôtes Zabbix avec icônes vectorielles, pastille de statut et halo pulsant pour les problèmes Haut et Désastre ;
 - icônes personnalisées (SVG, PNG, JPEG, GIF, WebP, 1 Mo au maximum) ajoutées et supprimées depuis l'éditeur, partagées par toutes les cartes ; les SVG contenant des scripts, des gestionnaires d'évènements, une DTD ou des références externes sont refusés ;
 - libellé des hôtes et des groupes en bas, en haut, à gauche ou à droite (réglage par nœud, ou par défaut pour toute la carte), contourné par les liens ; ou pas d'icône du tout, le libellé étant alors écrit dans la boîte ;
+- macros Zabbix dans les libellés des hôtes, des items et des déclencheurs : `{HOST.*}`, `{INVENTORY.*}`, `{ITEM.*}`, `{TRIGGER.*}` ;
 - groupes d'hôtes : statut cumulé des hôtes surveillés du groupe (sévérité la plus haute, nombre de problèmes, hôtes en problème) ;
 - items : dernière valeur affichée en direct (unités et tables de correspondance appliquées), statut d'après les déclencheurs de l'item ;
 - déclencheurs : état OK / PROBLÈME aux couleurs de la sévérité, problèmes actifs au clic ;
